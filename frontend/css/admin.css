@@ -1,0 +1,343 @@
+/* admin.css */
+
+#map {
+    height: 90vh;
+    width: 100%;
+}
+
+.toolbar {
+    margin: 10px;
+}
+
+.legend {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid #ccc;
+    font-size: 13px;
+    line-height: 1.5;
+    border-radius: 6px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+    z-index: 1000;
+}
+
+.legend h4 {
+    margin: 0 0 6px;
+    font-size: 14px;
+}
+
+.legend-line {
+    display: inline-block;
+    width: 25px;
+    height: 6px;
+    margin-right: 8px;
+    vertical-align: middle;
+    border: 1px solid #333;
+}
+
+/* ====== Container utama control kiri atas ====== */
+.leaflet-top.leaflet-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    /* semua rata kiri */
+    gap: 8px;
+    /* jarak antar control */
+    padding: 10px;
+    pointer-events: none;
+    /* klik hanya di control, bukan area kosong */
+}
+
+/* Semua control */
+.leaflet-top.leaflet-left>.leaflet-control {
+    pointer-events: auto;
+    margin: 0 !important;
+    background: #fff;
+    /* putih */
+    border-radius: 8px;
+    /* sudut membulat */
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+    /* shadow lembut */
+    overflow: visible;
+    /* biar rapi */
+    transition: border-radius 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+/* Hover efek */
+.leaflet-top.leaflet-left>.leaflet-control:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    transform: translateY(-2px);
+}
+
+/* ====== Zoom Control ====== */
+.leaflet-control-zoom {
+    order: 1;
+}
+
+/* Tombol zoom biar seragam */
+.leaflet-control-zoom a {
+    width: 34px;
+    height: 34px;
+    line-height: 34px;
+    font-size: 18px;
+}
+
+/* ====== Geocoder Control ====== */
+.leaflet-control-geocoder {
+    order: 2;
+    display: flex !important;
+    align-items: center;
+    width: auto !important;
+    margin: 0 !important;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    overflow: visible !important;
+    /* penting: biar result keluar */
+    position: relative;
+    transition: border-radius 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+    z-index: 1001;
+    /* Pastikan lebih tinggi dari toolbar geoman */
+}
+
+/* Ikon search */
+.leaflet-control-geocoder-icon {
+    width: 24px !important;
+    height: 25px !important;
+    line-height: 32px;
+    border-radius: 0 !important;
+    background-color: transparent;
+    background-size: 100% 100% !important;
+    margin: 0 !important;
+    transition: transform 0.2s ease;
+}
+
+.leaflet-control-geocoder-icon:hover {
+    transform: scale(1.1);
+}
+
+/* Input search */
+.leaflet-control-geocoder input {
+    flex: 1;
+    min-width: 140px;
+    max-width: 250px;
+    max-height: 25px;
+    padding: 6px 8px;
+    font-size: 0.9rem;
+    transition: max-width 0.3s ease, padding 0.2s ease;
+}
+
+.leaflet-control-geocoder-results {
+    max-height: 200px; /* biar ada scroll */
+    overflow-y: auto;  /* tampilkan scrollbar */
+    pointer-events: auto; /* biar event tetap bisa dipakai di dalam */
+    scrollbar-width: thin;
+    scrollbar-color: #888 #f1f1f1;
+    -webkit-overflow-scrolling: touch; /* Smooth scrolling di iOS */
+    
+}
+
+.leaflet-control-geocoder-results:hover {
+    pointer-events: auto !important;
+}
+
+.leaflet-control-geocoder-results::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.leaflet-control-geocoder-results::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+    margin: 4px 0;
+}
+
+.leaflet-control-geocoder-results::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.leaflet-control-geocoder-results::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+/* Mencegah penutupan saat mengklik scrollbar */
+.leaflet-control-geocoder-form.no-close .leaflet-control-geocoder-alternatives,
+.leaflet-control-geocoder-form.no-close .leaflet-control-geocoder-results {
+    pointer-events: auto !important;
+}
+
+/* Placeholder */
+.leaflet-control-geocoder input::placeholder {
+    color: #888;
+    font-size: 0.85rem;
+}
+
+/* Fokus efek */
+.leaflet-control-geocoder input:focus {
+    box-shadow: inset 0 0 0 2px #007bff33;
+    border-radius: 6px;
+    max-width: 280px;
+    /* ⬅️ melebar smooth saat fokus */
+}
+
+/* Result list positioning */
+.leaflet-control-geocoder .leaflet-control-geocoder-alternatives {
+    position: absolute;
+    top: 100%;
+    /* Muncul di bawah control */
+    left: 0;
+    width: 100%;
+    border-top: 1px solid #ddd;
+    margin-top: 2px;
+    border-radius: 0 0 8px 8px;
+    /* Sesuaikan dengan parent */
+    background: #fff;
+    max-height: 260px;
+    overflow-y: auto;
+    z-index: 1000;
+    /* Pastikan muncul di atas elemen lain */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    /* Tambahkan shadow untuk efek floating */
+    pointer-events: auto !important;
+    overscroll-behavior: contain; /* Mencegah scroll bounce */
+}
+
+.leaflet-control-geocoder .leaflet-control-geocoder-alternatives * {
+    pointer-events: auto !important;
+}
+
+/* Animasi untuk hasil pencarian */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.leaflet-control-geocoder-alternatives {
+    animation: fadeIn 0.2s ease-out;
+}
+
+/* ====== Geoman Toolbar ====== */
+.leaflet-pm-toolbar {
+    order: 3;
+    margin: 0 !important;
+    position: relative !important;
+    float: none !important;
+    top: auto !important;
+    left: auto !important;
+    display: block !important;
+    overflow: visible !important;
+    /* biar tombol tambahan muncul */
+    padding: 0 !important;
+    /* reset padding berlebih */
+    background: #fff;
+    /* tetap putih */
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+/* ====== Popup Styling ====== */
+.leaflet-popup-content {
+    width: auto !important;
+    min-width: 260px;
+    font-size: 0.9rem;
+}
+
+/* Form control di popup */
+.leaflet-popup-content .form-control,
+.leaflet-popup-content .form-select {
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+}
+
+/* Responsif: layar kecil → search full width */
+@media (max-width: 480px) {
+    .leaflet-control-geocoder {
+        max-width: 100% !important;
+    }
+
+    .leaflet-control-geocoder input {
+        width: 100%;
+    }
+}
+
+.leaflet-control-search {
+    width: 30px;
+    height: 30px;
+    line-height: 30px;
+    text-align: center;
+    text-decoration: none;
+    color: #333;
+    font-size: 16px;
+    display: block;
+}
+
+.leaflet-control-search:hover {
+    background-color: #f4f4f4;
+}
+
+.autocomplete-items {
+    border: 1px solid #d4d4d4;
+    border-top: none;
+    background: white;
+}
+
+.suggestion {
+    padding: 5px;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.suggestion:hover {
+    background-color: #f0f0f0;
+}
+
+
+.legend {
+  background: white;
+  padding: 10px;
+  border-radius: 8px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  font-size: 14px;
+}
+.legend-line {
+  display: inline-block;
+  width: 30px;
+  height: 4px;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+#legend {
+  background: white;
+  padding: 8px;
+  border-radius: 6px;
+  box-shadow: 0 0 6px rgba(0,0,0,0.2);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+#legend h4 {
+  margin: 0 0 6px;
+  font-size: 14px;
+  font-weight: bold;
+}
+
+#legend .legend-line {
+  display: inline-block;
+  width: 30px;
+  height: 4px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.custom-marker-new {
+    filter: drop-shadow(0 0 3px yellow);
+}
+
+.custom-marker-edit {
+    filter: drop-shadow(0 0 3px orange);
+}
+

@@ -1,0 +1,107 @@
+/* === Layout full screen dan center === */
+html, body {
+  height: 100%;           /* penting agar flex bisa memanfaatkan tinggi penuh */
+}
+
+body {
+  background: #6c757d;    /* fallback */
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  /* CENTER FORM */
+  display: flex;
+  align-items: center;    /* vertikal */
+  justify-content: center;/* horizontal */
+
+  margin: 0;
+  min-height: 100%;       /* jaga di perangkat kecil */
+  transition: background-image 0.5s ease;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  z-index: -1;
+}
+
+.login-box {
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 2rem;
+  border-radius: 12px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  width: 100%;
+  max-width: 400px;
+  transition: all 0.3s ease;
+}
+
+body.dark-mode .login-box {
+  background-color: rgba(33, 37, 41, 0.95);
+  color: white;
+}
+
+.form-control:focus {
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+body.dark-mode .form-control {
+  background-color: #343a40;
+  color: white;
+  border-color: #495057;
+}
+
+.toggle-password {
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+/* Spinner kecil di pojok kanan bawah */
+#loadingOverlay {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 40px;
+  height: 40px;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;  
+  border-radius: 50%;
+  
+  color: white;
+  flex-direction: column;
+  padding: 10px;
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-radius: 50%;
+  border-top-color: #fff;
+  animation: spin 1s linear infinite;
+  /* animation: spin 1s ease-in-out infinite; */
+  margin-bottom: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* URL info kiri bawah */
+.bg-info-text {
+position: fixed;
+left: 10px;
+bottom: 10px;
+background: rgba(0, 0, 0, 0.4);
+color: #fff;
+padding: 6px 10px;
+border-radius: 8px;
+font-size: 0.8rem;
+font-family: sans-serif;
+word-break: break-all;
+z-index: 1000;
+}
