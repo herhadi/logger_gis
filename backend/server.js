@@ -872,7 +872,7 @@ cron.schedule('45 6 * * *', () => { //
 
 // === START SERVER ===
 const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
 
