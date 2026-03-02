@@ -5,7 +5,7 @@ const db = mysql.createPool({
   host: 'localhost',
   user: 'root',
   password: 'pdambTg!23', // ganti sesuai config
-  database: 'mqtt',
+  database: 'log_gis',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0

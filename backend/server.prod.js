@@ -637,14 +637,6 @@ function parsePolygon(wkt) {
   }
 }
 
-// app.use(express.static(path.join(__dirname, '../frontend'), { index: false })); // untuk mengabaikan file index.html
-
-app.use(express.static(path.join(__dirname, '../frontend')));
-// === Redirect root ke login.html ===
-app.get('/', (req, res) => {
-  res.redirect('/login.html');
-});
-
 // Telegram Bot Setup
 const token = '8340205720:AAFX6H7cRDyItXB45k6fxDpzWOe0XJFtHjc';
 // const chat_id = '648351920';  // Ganti dengan chat_id milik Anda
@@ -938,9 +930,17 @@ cron.schedule('45 6 * * *', () => { //
 });
 
 
+// app.use(express.static(path.join(__dirname, '../frontend'), { index: false })); // untuk mengabaikan file index.html
+
+app.use(express.static(path.join(__dirname, '../frontend')));
+// === Redirect root ke login.html ===
+app.get('/', (req, res) => {
+  res.redirect('/login.html');
+});
+
 // === START SERVER ===
 const PORT = 3000;
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, '127.0.0.1', () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
 
