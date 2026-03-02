@@ -4,6 +4,9 @@ node_modules/
 # File konfigurasi rahasia (nanti untuk database)
 .env
 
+# Pengaturan editor (personal)
+.vscode/
+
 # File sampah macOS
 .DS_Store
 
