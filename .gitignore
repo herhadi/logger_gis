@@ -1,0 +1,11 @@
+# Folder dependencies (sangat berat, jangan diupload)
+node_modules/
+
+# File konfigurasi rahasia (nanti untuk database)
+.env
+
+# File sampah macOS
+.DS_Store
+
+# Folder logs
+npm-debug.log*
