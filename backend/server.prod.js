@@ -1,41 +1,50 @@
 const express = require('express');
-const mysql = require('mysql2/promise'); // pakai promise API
+const mysql = require('mysql2/promise'); 
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
-const MySQLStore = require('express-mysql-session')(session);
+const pgSession = require('connect-pg-simple')(session); // Pakai ini
 const bcrypt = require('bcrypt');
 const cron = require('node-cron');
 const fs = require('fs');
 const fetch = global.fetch;
 
-const { db, dbSensor, dbGis, dbPostgres } = require('./db'); // koneksi db (mysql2/promise)
+const { db, dbSensor, dbGis, dbPostgres } = require('./db'); 
 
 const app = express();
+
+// PENTING: Tambahkan trust proxy agar session terbaca di lingkungan HTTPS (Railway)
+app.set('trust proxy', 1);
 
 app.use(cors());
 app.use(express.json());
 
-// session store pakai koneksi db yang sudah ada
-const sessionStore = new MySQLStore({}, db);
-
+// === KONFIGURASI SESSION POSTGRESQL ===
 app.use(session({
+  store: new pgSession({
+    pool : dbPostgres,                // Menggunakan pool Postgres dari db.js
+    tableName : 'session',            // Pastikan nama tabel di Postgres sama
+    createTableIfMissing: false       // Kita sudah buat manual tadi
+  }),
   key: 'session_cookie',
-  secret: 'rahasia-super-aman',
-  store: sessionStore,
+  secret: 'rahasia-super-aman',       // Ganti dengan secret yang lebih kuat jika perlu
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 } // 1 hari
+  cookie: { 
+    maxAge: 24 * 60 * 60 * 1000,      // 1 hari
+    secure: true,                     // Wajib true untuk Railway (HTTPS)
+    sameSite: 'none'                  // Mencegah masalah cookie cross-domain
+  }
 }));
 
-const offlineCache = new Set(); // menyimpan idmet yang sudah dikirimi notifikasi offline
+const offlineCache = new Set();
 
 // === POST Login ===
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
     
-    // Pakai dbPostgres dan gunakan format $1 (PostgreSQL)
+    // Query ke PostgreSQL
     const { rows } = await dbPostgres.query('SELECT * FROM users WHERE username = $1', [username]);
 
     if (rows.length === 0) {
@@ -48,13 +57,14 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Password salah' });
     }
 
-    // Update last_login di PostgreSQL
+    // Update last_login
     try {
       await dbPostgres.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
     } catch (e) {
       console.warn('Gagal update last_login:', e.message);
     }
 
+    // Simpan data ke session
     req.session.user = {
       id: user.id,
       username: user.username,
@@ -62,8 +72,15 @@ app.post('/api/login', async (req, res) => {
       last_login: user.last_login
     };
 
-    const redirectUrl = user.role === 'admin' ? '/admin.html' : '/user.html';
-    return res.json({ redirect: redirectUrl });
+    // PAKSA SIMPAN session sebelum redirect agar data masuk ke DB dulu
+    req.session.save((err) => {
+      if (err) {
+        console.error('Session Save Error:', err);
+        return res.status(500).json({ error: 'Gagal menyimpan sesi' });
+      }
+      const redirectUrl = user.role === 'admin' ? '/admin.html' : '/user.html';
+      return res.json({ redirect: redirectUrl });
+    });
 
   } catch (err) {
     console.error('Login error:', err);
@@ -73,10 +90,9 @@ app.post('/api/login', async (req, res) => {
 
 // === GET Info Session Aktif ===
 app.get('/api/session', (req, res) => {
-  if (!req.session.user) {
+  if (!req.session || !req.session.user) {
     return res.status(401).json({ error: 'Belum login' });
   }
-  // Kirim data user dari session
   res.json({ user: req.session.user });
 });
 
@@ -84,14 +100,14 @@ app.get('/api/session', (req, res) => {
 app.post('/api/logout', (req, res) => {
   req.session.destroy(err => {
     if (err) return res.status(500).json({ error: 'Gagal logout' });
-    res.clearCookie('connect.sid');
+    res.clearCookie('session_cookie'); // Pastikan sama dengan "key" di config session
     res.json({ message: 'Berhasil logout' });
   });
 });
 
-// Middleware autentikasi opsional
+// Middleware autentikasi
 function requireLogin(req, res, next) {
-  if (!req.session.user) {
+  if (!req.session || !req.session.user) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
   next();
