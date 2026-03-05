@@ -1,6 +1,8 @@
+require('dotenv').config();
 const mysql = require('mysql2/promise');
 const { Pool } = require('pg');
-require('dotenv').config();
+
+console.log("Cek URL DB:", process.env.DATABASE_URL ? "Ditemukan" : "Tidak Ditemukan");
 
 // Koneksi ke database lokasi
 const db = mysql.createPool({
