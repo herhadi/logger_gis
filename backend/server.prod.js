@@ -9,7 +9,7 @@ const cron = require('node-cron');
 const fs = require('fs');
 const fetch = global.fetch;
 
-const { db, dbSensor, dbGis } = require('./db'); // koneksi db (mysql2/promise)
+const { db, dbSensor, dbGis, dbPostgres } = require('./db'); // koneksi db (mysql2/promise)
 
 const app = express();
 
@@ -34,21 +34,23 @@ const offlineCache = new Set(); // menyimpan idmet yang sudah dikirimi notifikas
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    const [results] = await db.query('SELECT * FROM users WHERE username = ?', [username]);
+    
+    // Pakai dbPostgres dan gunakan format $1 (PostgreSQL)
+    const { rows } = await dbPostgres.query('SELECT * FROM users WHERE username = $1', [username]);
 
-    if (results.length === 0) {
+    if (rows.length === 0) {
       return res.status(401).json({ error: 'User tidak ditemukan' });
     }
 
-    const user = results[0];
+    const user = rows[0];
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) {
       return res.status(401).json({ error: 'Password salah' });
     }
 
-    // Update last_login
+    // Update last_login di PostgreSQL
     try {
-      await db.query('UPDATE users SET last_login = NOW() WHERE id = ?', [user.id]);
+      await dbPostgres.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
     } catch (e) {
       console.warn('Gagal update last_login:', e.message);
     }

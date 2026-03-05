@@ -1,11 +1,13 @@
 const mysql = require('mysql2/promise');
+const { Pool } = require('pg');
+require('dotenv').config();
 
 // Koneksi ke database lokasi
 const db = mysql.createPool({
   host: 'localhost',
   user: 'root',
   password: 'pdambTg!23', // ganti sesuai config
-  database: 'log_gis',
+  database: 'mqtt',
   waitForConnections: true,
   connectionLimit: 10,
   queueLimit: 0
@@ -32,4 +34,10 @@ const dbGis = mysql.createPool({
   queueLimit: 0
 });
 
-module.exports = { db, dbSensor, dbGis };
+// Koneksi PostgreSQL/PostGIS (Baru - Railway)
+const dbPostgres = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+module.exports = { db, dbSensor, dbGis, dbPostgres };
