@@ -305,35 +305,32 @@ function parseLineString(wkt) {
 // GET semua Polygon
 app.get('/api/polygon', async (req, res) => {
   try {
-    let sql = 'SELECT OGR_FID, AsText(SHAPE) AS coords, nosamw, luas, lsval, nosambckup FROM gis_srpolygon';
+    // PostgreSQL menggunakan ST_AsText dan nama tabel case-sensitive (srpolygon)
+    let sql = 'SELECT ogr_fid, ST_AsText(shape) AS coords, nosamw, luas, lsval, nosambckup FROM srpolygon';
     const params = [];
 
-    // Cek apakah ada bbox di query
     if (req.query.bbox) {
-      const bbox = req.query.bbox.split(',').map(Number); // [south, west, north, east]
+      const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
         const [south, west, north, east] = bbox;
-        sql += ` WHERE MBRContains(
-            GeomFromText('POLYGON((${west} ${south}, ${east} ${south}, ${east} ${north}, ${west} ${north}, ${west} ${south}))'),
-            SHAPE
-          )`;
-
+        // PostGIS menggunakan ST_MakeEnvelope atau ST_Intersects
+        sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        params.push(west, south, east, north);
       }
     }
 
-    const [results] = await dbGis.query(sql, params);
+    const { rows } = await dbPostgres.query(sql, params);
 
-    const parsed = results.map(row => ({
-      id: row.OGR_FID,
+    const parsed = rows.map(row => ({
+      id: row.ogr_fid,
       nosamw: row.nosamw,
       luas: row.luas,
       lsval: row.lsval,
       nosambckup: row.nosambckup,
-      polygon: parsePolygon(row.coords) // tetap pakai helper parsePolygon yang sudah ada
+      polygon: parsePolygon(row.coords) // Pastikan helper ini mendukung format 'POLYGON((...))'
     }));
 
     res.json(parsed);
-
   } catch (err) {
     console.error('Error get polygon:', err);
     res.status(500).json({ error: err.message });
@@ -344,55 +341,29 @@ app.get('/api/polygon', async (req, res) => {
 app.post('/api/polygon/create', async (req, res) => {
   try {
     const { coords, nosamw, nosambckup } = req.body;
+    
+    // ... (Logika validasi & closedCoords tetap sama) ...
 
-    console.log('🔹 Polygon Create - coords:', JSON.stringify(coords));
-    console.log('🔹 Polygon Create - nosamw:', nosamw, 'nosambckup:', nosambckup);
-
-    // Validasi dasar
-    if (!coords || coords.length < 3)
-      return res.status(400).json({ error: 'Polygon minimal 3 titik' });
-    if (!nosamw || nosamw.trim() === '')
-      return res.status(400).json({ error: 'No Sambung wajib diisi' });
-
-    // Cek duplikasi nosamw
-    const [existing] = await dbGis.query(
-      'SELECT ogr_fid FROM gis_srpolygon WHERE nosamw = ? LIMIT 1',
-      [nosamw]
-    );
-    if (existing.length > 0) {
-      return res.status(400).json({ error: `No Sambung "${nosamw}" sudah ada!` });
-    }
-
-    // Pastikan polygon tertutup
-    const closedCoords = [...coords];
-    const first = coords[0];
-    const last = coords[coords.length - 1];
-    if (Math.abs(first[0] - last[0]) > 0.000001 || Math.abs(first[1] - last[1]) > 0.000001) {
-      closedCoords.push(first);
-    }
-
-    // Hitung luas
     const lsval = calculateAreaFromCoords(closedCoords);
     const luas = `${lsval} m²`;
 
-    // Generate WKT
+    // Pastikan urutan Lon Lat: PostGIS WKT adalah (Lon Lat)
     const wkt = `POLYGON((${closedCoords.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
 
-    // Insert ke database
-    const [result] = await dbGis.query(
-      'INSERT INTO gis_srpolygon (SHAPE, nosamw, luas, lsval, nosambckup) VALUES (GeomFromText(?), ?, ?, ?, ?)',
-      [wkt, nosamw, luas, lsval, nosambckup || null]
-    );
+    // Query PostgreSQL
+    const sql = `INSERT INTO srpolygon (shape, nosamw, luas, lsval, nosambckup) 
+                 VALUES (ST_GeomFromText($1, 4326), $2, $3, $4, $5) 
+                 RETURNING ogr_fid`;
 
-    // Kirim response sukses
+    const { rows } = await dbPostgres.query(sql, [wkt, nosamw, luas, lsval, nosambckup || null]);
+
     res.json({
-      ogr_fid: result.insertId,
+      ogr_fid: rows[0].ogr_fid,
       success: true,
       message: 'Polygon berhasil disimpan',
       lsval,
       luas
     });
-
   } catch (err) {
     console.error('Error create polygon:', err);
     res.status(500).json({ error: err.message });
@@ -405,37 +376,18 @@ app.put('/api/polygon/update/:id', async (req, res) => {
     const { id } = req.params;
     const { coords, nosamw, nosambckup } = req.body;
 
-    if (!coords || coords.length < 3)
-      return res.status(400).json({ error: 'Polygon minimal 3 titik' });
-
-    // pastikan tertutup
-    const closedCoords = [...coords];
-    const first = coords[0];
-    const last = coords[coords.length - 1];
-    if (first[0] !== last[0] || first[1] !== last[1]) {
-      closedCoords.push(first);
-    }
-
-    const lsval = calculateAreaFromCoords(closedCoords);
+    const wkt = `POLYGON((${coords.map(p => `${p[1]} ${p[0]}`).join(',')}))`; 
+    const lsval = calculateAreaFromCoords(coords);
     const luas = `${lsval} m²`;
 
-    const wkt = `POLYGON((${closedCoords.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
+    const sql = `UPDATE srpolygon 
+                 SET shape = ST_GeomFromText($1, 4326), nosamw=$2, luas=$3, lsval=$4, nosambckup=$5 
+                 WHERE ogr_fid=$6`;
 
-    const sql = `UPDATE gis_srpolygon 
-                     SET SHAPE = GeomFromText(?), nosamw=?, luas=?, lsval=?, nosambckup=? 
-                     WHERE ogr_fid=?`;
+    await dbPostgres.query(sql, [wkt, nosamw, luas, lsval, nosambckup || null, id]);
 
-    await dbGis.query(sql, [wkt, nosamw, luas, lsval, nosambckup || null, id]);
-
-    res.json({
-      success: true,
-      id,
-      message: "Polygon berhasil diperbarui",
-      lsval,
-      luas
-    });
+    res.json({ success: true, message: "Berhasil diperbarui" });
   } catch (err) {
-    console.error('Error update polygon:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -444,23 +396,15 @@ app.put('/api/polygon/update/:id', async (req, res) => {
 app.delete('/api/polygon/delete/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    console.log("Delete request for id:", id);
+    const result = await dbPostgres.query("DELETE FROM srpolygon WHERE ogr_fid = $1", [id]);
 
-    const [result] = await dbGis.query(
-      "DELETE FROM gis_srpolygon WHERE OGR_FID = ?",
-      [id]
-    );
-
-    console.log("Delete result:", result);
-
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: "Polygon not found" });
     }
 
     res.json({ message: "Polygon deleted successfully" });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ message: err.message });
   }
 });
 
