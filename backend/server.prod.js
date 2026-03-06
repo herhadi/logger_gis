@@ -113,12 +113,13 @@ function requireLogin(req, res, next) {
   next();
 }
 
-// === API CRUD untuk PIPA ===
+// === API CRUD untuk PIPA (PostgreSQL Version) ===
 
 // GET semua pipa
 app.get('/api/pipa', async (req, res) => {
   try {
-    let sql = `SELECT OGR_FID, AsText(SHAPE) AS coords, dc_id, dia, jenis, panjang, 
+    // Di PostgreSQL gunakan ST_AsGeoJSON agar tidak perlu parse manual di Node.js
+    let sql = `SELECT ogr_fid, ST_AsGeoJSON(shape) AS geometry, dc_id, dia, jenis, panjang, 
                       keterangan, lokasi, status, diameter, roughness, zona
                FROM gis_pipa`;
     const params = [];
@@ -127,17 +128,16 @@ app.get('/api/pipa', async (req, res) => {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
         const [south, west, north, east] = bbox;
-        sql += ` WHERE MBRIntersects(
-            GeomFromText('POLYGON((${west} ${south}, ${east} ${south}, ${east} ${north}, ${west} ${north}, ${west} ${south}))'),
-            SHAPE
-          )`;
+        // Gunakan operator && (bounding box intersect) yang sangat cepat di PostGIS
+        sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        params.push(west, south, east, north);
       }
     }
 
-    const [results] = await dbGis.query(sql, params);
+    const { rows } = await dbPostgres.query(sql, params);
 
-    const parsed = results.map(row => ({
-      id: row.OGR_FID,
+    const parsed = rows.map(row => ({
+      id: row.ogr_fid,
       dc_id: row.dc_id,
       dia: row.dia,
       jenis: row.jenis,
@@ -148,7 +148,8 @@ app.get('/api/pipa', async (req, res) => {
       diameter: row.diameter,
       roughness: row.roughness,
       zona: row.zona,
-      line: parseLineString(row.coords)
+      // GeoJSON formatnya [lng, lat], kita balik ke [lat, lng] untuk Leaflet
+      line: JSON.parse(row.geometry).coordinates.map(c => [c[1], c[0]])
     }));
 
     res.json(parsed);
@@ -167,22 +168,22 @@ app.post('/api/pipa/create', async (req, res) => {
       return res.status(400).json({ error: 'Pipa minimal 2 titik koordinat' });
     }
 
-    // Buat WKT LINESTRING
+    // PostGIS WKT format (Longitude Latitude)
     const wkt = `LINESTRING(${coords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
 
-    const [result] = await dbGis.query(
-      `INSERT INTO gis_pipa (SHAPE, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona)
-       VALUES (GeomFromText(?), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [wkt, dc_id || null, dia || null, jenis || null, panjang || null, keterangan || null,
-        lokasi || null, status || null, diameter || null, roughness || null, zona || null]
-    );
+    const sql = `INSERT INTO gis_pipa (shape, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona)
+                 VALUES (ST_GeomFromText($1, 4326), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                 RETURNING ogr_fid`; // PostgreSQL menggunakan RETURNING untuk ambil ID baru
+
+    const result = await dbPostgres.query(sql, [
+      wkt, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona
+    ]);
 
     res.json({
-      ogr_fid: result.insertId,
+      ogr_fid: result.rows[0].ogr_fid,
       success: true,
       message: "Pipa berhasil disimpan"
     });
-
   } catch (err) {
     console.error("Error create pipa:", err);
     res.status(500).json({ error: err.message });
@@ -195,21 +196,15 @@ app.put('/api/pipa/update/:id', async (req, res) => {
     const id = req.params.id;
     const { coords, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona } = req.body;
 
-    if (!coords || coords.length < 2) {
-      return res.status(400).json({ error: 'Pipa minimal 2 titik koordinat' });
-    }
-
     const wkt = `LINESTRING(${coords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
 
     const sql = `UPDATE gis_pipa 
-                 SET SHAPE = GeomFromText(?), dc_id=?, dia=?, jenis=?, panjang=?, keterangan=?, 
-                     lokasi=?, status=?, diameter=?, roughness=?, zona=? 
-                 WHERE OGR_FID=?`;
+                 SET shape = ST_GeomFromText($1, 4326), dc_id=$2, dia=$3, jenis=$4, panjang=$5, 
+                     keterangan=$6, lokasi=$7, status=$8, diameter=$9, roughness=$10, zona=$11 
+                 WHERE ogr_fid=$12`;
 
-    await dbGis.query(sql, [
-      wkt, dc_id || null, dia || null, jenis || null, panjang || null,
-      keterangan || null, lokasi || null, status || null, diameter || null,
-      roughness || null, zona || null, id
+    await dbPostgres.query(sql, [
+      wkt, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona, id
     ]);
 
     res.json({ success: true, id, message: "Pipa berhasil diperbarui" });
@@ -223,9 +218,9 @@ app.put('/api/pipa/update/:id', async (req, res) => {
 app.delete('/api/pipa/delete/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    const [result] = await dbGis.query("DELETE FROM gis_pipa WHERE OGR_FID = ?", [id]);
+    const result = await dbPostgres.query("DELETE FROM gis_pipa WHERE ogr_fid = $1", [id]);
 
-    if (result.affectedRows === 0) {
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: "Pipa tidak ditemukan" });
     }
 
@@ -236,69 +231,27 @@ app.delete('/api/pipa/delete/:id', async (req, res) => {
   }
 });
 
-// endpoint daftar diameter unik
-app.get('/api/pipa/diameter', async (req, res) => {
-  try {
-    const [rows] = await dbGis.query(
-      // 'SELECT DISTINCT CAST(dia AS UNSIGNED) AS dia FROM gis_pipa ORDER BY CAST(dia AS UNSIGNED) desc;'
-      'select distinct diameter from gis_pipa where diameter is not null order by diameter desc;'
-    );
-    // ambil kolom diameter dari setiap row
-    res.json(rows.map(r => r.diameter));
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB error' });
-  }
-});
-
-
-// Endpoint baru gabungan diameter + jenis
+// Endpoint Option (Diameter & Jenis)
 app.get('/api/pipa/option', async (req, res) => {
   try {
-    // Ambil diameter unik
-    const [rowsDia] = await dbGis.query(`
-      SELECT DISTINCT diameter 
-      FROM gis_pipa 
-      WHERE diameter IS NOT NULL 
-      ORDER BY CAST(diameter AS UNSIGNED) DESC
-    `);
+    // Di PostgreSQL, CAST(diameter AS TEXT) jika ingin sorting teks yang berisi angka
+    const diaQuery = `SELECT DISTINCT diameter FROM gis_pipa WHERE diameter IS NOT NULL ORDER BY diameter DESC`;
+    const jenisQuery = `SELECT DISTINCT jenis FROM gis_pipa WHERE jenis IS NOT NULL ORDER BY jenis ASC`;
 
-    // Ambil jenis unik
-    const [rowsJenis] = await dbGis.query(`
-      SELECT DISTINCT jenis 
-      FROM gis_pipa 
-      WHERE jenis IS NOT NULL 
-      ORDER BY jenis ASC
-    `);
+    const [resDia, resJenis] = await Promise.all([
+      dbPostgres.query(diaQuery),
+      dbPostgres.query(jenisQuery)
+    ]);
 
-    // Kembalikan dengan struktur mirip sebelumnya
     res.json({
-      diameter: rowsDia.map(r => r.diameter),
-      jenis: rowsJenis.map(r => r.jenis)
+      diameter: resDia.rows.map(r => r.diameter),
+      jenis: resJenis.rows.map(r => r.jenis)
     });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'DB error' });
   }
 });
-
-// Helper parse LINESTRING
-function parseLineString(wkt) {
-  if (!wkt || !wkt.startsWith('LINESTRING')) return [];
-  try {
-    const coordsString = wkt.match(/\(([^)]+)\)/);
-    if (!coordsString) return [];
-    const points = coordsString[1].split(',');
-    return points.map(point => {
-      const [lng, lat] = point.trim().split(' ').map(Number);
-      return [lat, lng]; // Leaflet pakai [lat, lng]
-    });
-  } catch (err) {
-    console.error('Error parsing LineString WKT:', err, wkt);
-    return [];
-  }
-}
 
 // === API CRUD untuk POLYGON ===
 
