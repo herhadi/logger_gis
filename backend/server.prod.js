@@ -363,51 +363,47 @@ app.delete('/api/polygon/delete/:id', async (req, res) => {
 
 // === API CRUD untuk MARKER ===
 
-// GET semua marker
-// === API Marker gabungan dari 4 tabel ===
+// GET semua marker dari 4 tabel berbeda
 app.get('/api/marker', async (req, res) => {
   try {
-    let bboxFilter = "";
+    let params = [];
+    let whereClause = "";
+
+    // Filter BBox (Penting untuk performa 4000+ marker)
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
-        const [west, south, east, north] = bbox;
-        bboxFilter = `WHERE MBRContains(
-          GeomFromText('POLYGON((${west} ${south}, ${east} ${south}, ${east} ${north}, ${west} ${north}, ${west} ${south}))'),
-          SHAPE
-        )`;
+        const [south, west, north, east] = bbox;
+        whereClause = `WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        params = [west, south, east, north];
       }
     }
 
     const sql = `
-      SELECT OGR_FID, AsText(SHAPE) AS coords, tipe, keterangan, lokasi, elevation
+      SELECT id, ST_AsGeoJSON(geom) AS geometry, tipe, keterangan, lokasi, elevation
       FROM (
-        SELECT OGR_FID, SHAPE, 'acc' AS tipe, keterangan, lokasi, elevation 
-        FROM gis_acc
+        SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe, keterangan, lokasi, elevation FROM gis_acc
         UNION ALL
-        SELECT OGR_FID, SHAPE, 'reservoir' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation 
-        FROM gis_reservoir
+        SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_reservoir
         UNION ALL
-        SELECT OGR_FID, SHAPE, 'tank' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation 
-        FROM gis_tank
+        SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_tank
         UNION ALL
-        SELECT OGR_FID, SHAPE, 'valve' AS tipe, keterangan, lokasi, elevation 
-        FROM gis_valve
-      ) AS markers
-      ${bboxFilter};
+        SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe, keterangan, lokasi, elevation FROM gis_valve
+      ) AS combined_markers
+      ${whereClause}
     `;
 
-    const [results] = await dbGis.query(sql);
+    const { rows } = await dbPostgres.query(sql, params);
 
-    const parsed = results.map(row => {
-      const coords = parsePoint(row.coords);
+    const parsed = rows.map(row => {
+      const geo = JSON.parse(row.geometry);
       return {
-        id: row.OGR_FID,
+        id: row.id,
         tipe: row.tipe,
         keterangan: row.keterangan,
         lokasi: row.lokasi,
         elevation: row.elevation,
-        coords
+        coords: [geo.coordinates[1], geo.coordinates[0]] // Balik ke [lat, lng] untuk Leaflet
       };
     });
 
@@ -421,63 +417,77 @@ app.get('/api/marker', async (req, res) => {
 // CREATE marker
 app.post('/api/marker/create', async (req, res) => {
   try {
-    const { coords, nama, tipe, keterangan, status } = req.body;
+    const { coords, dc_id, tipe, keterangan, zona } = req.body;
 
     if (!coords || coords.length !== 2) {
-      return res.status(400).json({ error: 'Koordinat marker wajib diisi' });
+      return res.status(400).json({ error: 'Koordinat [lat, lng] wajib diisi' });
     }
 
     const [lat, lng] = coords;
     const wkt = `POINT(${lng} ${lat})`;
 
-    // tentukan tabel sesuai tipe
-    let table;
-    switch (tipe) {
-      case "acc":        table = "gis_acc"; break;
-      case "reservoir":  table = "gis_reservoir"; break;
-      case "tank":       table = "gis_tank"; break;
-      case "valve":      table = "gis_valve"; break;
-      default:
-        return res.status(400).json({ error: `Tipe marker tidak valid: ${tipe}` });
+    // Validasi tabel
+    const allowedTables = ["gis_acc", "gis_reservoir", "gis_tank", "gis_valve"];
+    const table = `gis_${tipe}`;
+    
+    if (!allowedTables.includes(table)) {
+      return res.status(400).json({ error: 'Tipe tidak valid' });
     }
 
-    const [result] = await dbGis.query(
-      `INSERT INTO ${table} (SHAPE, nama, tipe, keterangan, status) 
-       VALUES (GeomFromText(?), ?, ?, ?, ?)`,
-      [wkt, nama || null, tipe || null, keterangan || null, status || null]
-    );
+    const sql = `INSERT INTO ${table} (shape, dc_id, keterangan, zona) 
+                 VALUES (ST_GeomFromText($1, 4326), $2, $3, $4) 
+                 RETURNING ogr_fid`;
+
+    const result = await dbPostgres.query(sql, [wkt, dc_id, keterangan, zona]);
 
     res.json({
-      ogr_fid: result.insertId,
+      id: result.rows[0].ogr_fid,
       success: true,
       message: `Marker ${tipe} berhasil disimpan`
     });
   } catch (err) {
-    console.error("Error create marker:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-
 // UPDATE marker
-app.put('/api/marker/update/:id', async (req, res) => {
+app.put('/api/marker/update/:tipe/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const { lat, lng, nama, tipe, keterangan, status } = req.body;
+    const { id, tipe } = req.params;
+    const { coords, dc_id, keterangan, zona, lokasi, elevation } = req.body;
 
-    if (!lat || !lng) {
-      return res.status(400).json({ error: 'Koordinat marker wajib diisi' });
+    if (!coords || coords.length !== 2) {
+      return res.status(400).json({ error: 'Koordinat [lat, lng] wajib diisi' });
     }
 
+    const [lat, lng] = coords;
     const wkt = `POINT(${lng} ${lat})`;
 
-    const sql = `UPDATE gis_marker 
-                 SET SHAPE = GeomFromText(?), nama=?, tipe=?, keterangan=?, status=? 
-                 WHERE OGR_FID=?`;
+    // Tentukan tabel target berdasarkan tipe (acc, reservoir, tank, valve)
+    const table = `gis_${tipe}`;
 
-    await dbGis.query(sql, [wkt, nama || null, tipe || null, keterangan || null, status || null, id]);
+    const sql = `
+      UPDATE ${table} 
+      SET 
+        shape = ST_GeomFromText($1, 4326), 
+        dc_id = $2, 
+        keterangan = $3, 
+        zona = $4,
+        lokasi = $5,
+        elevation = $6,
+        tgl_update = CURRENT_TIMESTAMP
+      WHERE ogr_fid = $7
+    `;
 
-    res.json({ success: true, id, message: "Marker berhasil diperbarui" });
+    const result = await dbPostgres.query(sql, [
+      wkt, dc_id, keterangan, zona, lokasi, elevation, id
+    ]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: "Data tidak ditemukan" });
+    }
+
+    res.json({ success: true, message: `Marker ${tipe} berhasil diperbarui` });
   } catch (err) {
     console.error("Error update marker:", err);
     res.status(500).json({ error: err.message });
@@ -485,36 +495,24 @@ app.put('/api/marker/update/:id', async (req, res) => {
 });
 
 // DELETE marker
-app.delete('/api/marker/delete/:id', async (req, res) => {
+app.delete('/api/marker/delete/:tipe/:id', async (req, res) => {
   try {
-    const { id } = req.params;
-    const [result] = await dbGis.query("DELETE FROM gis_marker WHERE OGR_FID = ?", [id]);
+    const { id, tipe } = req.params;
+    const table = `gis_${tipe}`;
 
-    if (result.affectedRows === 0) {
+    const sql = `DELETE FROM ${table} WHERE ogr_fid = $1`;
+    const result = await dbPostgres.query(sql, [id]);
+
+    if (result.rowCount === 0) {
       return res.status(404).json({ message: "Marker tidak ditemukan" });
     }
 
-    res.json({ message: "Marker berhasil dihapus" });
+    res.json({ success: true, message: `Marker ${tipe} berhasil dihapus` });
   } catch (err) {
     console.error("Error delete marker:", err);
-    res.status(500).json({ message: "Server error" });
+    res.status(500).json({ error: "Server error" });
   }
 });
-
-// Helper parse POINT WKT
-function parsePoint(wkt) {
-  if (!wkt || !wkt.startsWith('POINT')) return null;
-  try {
-    const coordsString = wkt.match(/\(([^)]+)\)/);
-    if (!coordsString) return null;
-    const [lng, lat] = coordsString[1].split(' ').map(Number);
-    return [lat, lng]; // Leaflet pakai [lat, lng]
-  } catch (err) {
-    console.error('Error parsing Point WKT:', err, wkt);
-    return null;
-  }
-}
-
 
 // Helper untuk hitung luas geodesic polygon (m²)
 function calculateAreaFromCoords(coords) {
