@@ -369,20 +369,25 @@ app.get('/api/marker', async (req, res) => {
     let params = [];
     let whereClause = "";
 
-    // Filter BBox (Penting untuk performa 4000+ marker)
+    // Parsing BBox dari query string
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
-        const [south, west, north, east] = bbox;
-        whereClause = `WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
-        params = [west, south, east, north];
+        // Urutan: West, South, East, North
+        whereClause = `WHERE m.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        params = [bbox[0], bbox[1], bbox[2], bbox[3]];
       }
     }
 
     const sql = `
-      SELECT id, ST_AsGeoJSON(geom) AS geometry, tipe, keterangan, lokasi, elevation
+      SELECT 
+        m.id, 
+        ST_AsGeoJSON(m.geom) AS geometry, 
+        m.tipe, 
+        m.keterangan, 
+        m.lokasi, 
+        m.elevation
       FROM (
-        -- Pastikan semua kolom 'shape' diberi alias 'geom' agar seragam
         SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe, keterangan, lokasi, elevation FROM gis_acc
         UNION ALL
         SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_reservoir
@@ -390,9 +395,8 @@ app.get('/api/marker', async (req, res) => {
         SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_tank
         UNION ALL
         SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe, keterangan, lokasi, elevation FROM gis_valve
-      ) AS markers
-      -- Di sini kesalahannya: Jangan pakai 'shape', tapi pakai alias 'geom'
-      WHERE geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
+      ) AS m
+      ${whereClause}
     `;
 
     const { rows } = await dbPostgres.query(sql, params);
@@ -405,14 +409,19 @@ app.get('/api/marker', async (req, res) => {
         keterangan: row.keterangan,
         lokasi: row.lokasi,
         elevation: row.elevation,
-        coords: [geo.coordinates[1], geo.coordinates[0]] // Balik ke [lat, lng] untuk Leaflet
+        // Balik koordinat GeoJSON [lng, lat] menjadi Leaflet [lat, lng]
+        coords: [geo.coordinates[1], geo.coordinates[0]] 
       };
     });
 
     res.json(parsed);
   } catch (err) {
-    console.error("Error get marker:", err);
-    res.status(500).json({ error: err.message });
+    // Log ini akan muncul di Dashboard Railway kamu
+    console.error("CRITICAL ERROR MARKER:", err.message);
+    res.status(500).json({ 
+      error: "Gagal memuat marker", 
+      message: err.message 
+    });
   }
 });
 
