@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2/promise'); 
+const mysql = require('mysql2/promise');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
@@ -9,7 +9,7 @@ const cron = require('node-cron');
 const fs = require('fs');
 const fetch = global.fetch;
 
-const { db, dbSensor, dbGis, dbPostgres } = require('./db'); 
+const { db, dbSensor, dbGis, dbPostgres } = require('./db');
 
 const app = express();
 
@@ -22,15 +22,15 @@ app.use(express.json());
 // === KONFIGURASI SESSION POSTGRESQL ===
 app.use(session({
   store: new pgSession({
-    pool : dbPostgres,                // Menggunakan pool Postgres dari db.js
-    tableName : 'session',            // Pastikan nama tabel di Postgres sama
+    pool: dbPostgres,                // Menggunakan pool Postgres dari db.js
+    tableName: 'session',            // Pastikan nama tabel di Postgres sama
     createTableIfMissing: false       // Kita sudah buat manual tadi
   }),
   key: 'session_cookie',
   secret: 'rahasia-super-aman',       // Ganti dengan secret yang lebih kuat jika perlu
   resave: false,
   saveUninitialized: false,
-  cookie: { 
+  cookie: {
     maxAge: 24 * 60 * 60 * 1000,      // 1 hari
     secure: true,                     // Wajib true untuk Railway (HTTPS)
     sameSite: 'none'                  // Mencegah masalah cookie cross-domain
@@ -43,7 +43,7 @@ const offlineCache = new Set();
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
-    
+
     // Query ke PostgreSQL
     const { rows } = await dbPostgres.query('SELECT * FROM users WHERE username = $1', [username]);
 
@@ -294,7 +294,7 @@ app.get('/api/polygon', async (req, res) => {
 app.post('/api/polygon/create', async (req, res) => {
   try {
     const { coords, nosamw, nosambckup } = req.body;
-    
+
     // ... (Logika validasi & closedCoords tetap sama) ...
 
     const lsval = calculateAreaFromCoords(closedCoords);
@@ -329,7 +329,7 @@ app.put('/api/polygon/update/:id', async (req, res) => {
     const { id } = req.params;
     const { coords, nosamw, nosambckup } = req.body;
 
-    const wkt = `POLYGON((${coords.map(p => `${p[1]} ${p[0]}`).join(',')}))`; 
+    const wkt = `POLYGON((${coords.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
     const lsval = calculateAreaFromCoords(coords);
     const luas = `${lsval} m²`;
 
@@ -382,6 +382,7 @@ app.get('/api/marker', async (req, res) => {
     const sql = `
       SELECT id, ST_AsGeoJSON(geom) AS geometry, tipe, keterangan, lokasi, elevation
       FROM (
+        -- Pastikan semua kolom 'shape' diberi alias 'geom' agar seragam
         SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe, keterangan, lokasi, elevation FROM gis_acc
         UNION ALL
         SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_reservoir
@@ -389,8 +390,9 @@ app.get('/api/marker', async (req, res) => {
         SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_tank
         UNION ALL
         SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe, keterangan, lokasi, elevation FROM gis_valve
-      ) AS combined_markers
-      ${whereClause}
+      ) AS markers
+      -- Di sini kesalahannya: Jangan pakai 'shape', tapi pakai alias 'geom'
+      WHERE geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)
     `;
 
     const { rows } = await dbPostgres.query(sql, params);
@@ -429,7 +431,7 @@ app.post('/api/marker/create', async (req, res) => {
     // Validasi tabel
     const allowedTables = ["gis_acc", "gis_reservoir", "gis_tank", "gis_valve"];
     const table = `gis_${tipe}`;
-    
+
     if (!allowedTables.includes(table)) {
       return res.status(400).json({ error: 'Tipe tidak valid' });
     }
