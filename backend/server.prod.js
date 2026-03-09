@@ -1,19 +1,22 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
 const cors = require('cors');
 const path = require('path');
 const session = require('express-session');
-const pgSession = require('connect-pg-simple')(session); // Pakai ini
+const pgSession = require('connect-pg-simple')(session);
 const bcrypt = require('bcrypt');
 const cron = require('node-cron');
 const fs = require('fs');
-const fetch = global.fetch;
 
-const { db, dbSensor, dbGis, dbPostgres } = require('./db');
+// Gunakan node-fetch jika versi Node.js kamu di bawah 18, 
+// tapi di Railway (Node 18+) fetch sudah global.
+const fetch = global.fetch; 
+
+// Kita hanya butuh dbPostgres sekarang
+const { dbPostgres } = require('./db');
 
 const app = express();
 
-// PENTING: Tambahkan trust proxy agar session terbaca di lingkungan HTTPS (Railway)
+// PENTING: Trust proxy untuk HTTPS Railway agar cookie 'secure: true' terkirim
 app.set('trust proxy', 1);
 
 app.use(cors());
@@ -22,29 +25,29 @@ app.use(express.json());
 // === KONFIGURASI SESSION POSTGRESQL ===
 app.use(session({
   store: new pgSession({
-    pool: dbPostgres,                // Menggunakan pool Postgres dari db.js
-    tableName: 'session',            // Pastikan nama tabel di Postgres sama
-    createTableIfMissing: false       // Kita sudah buat manual tadi
+    pool: dbPostgres,                
+    tableName: 'session',            
+    createTableIfMissing: false       
   }),
   key: 'session_cookie',
-  secret: 'rahasia-super-aman',       // Ganti dengan secret yang lebih kuat jika perlu
+  // Gunakan env variable, jika tidak ada baru pakai fallback
+  secret: process.env.SESSION_SECRET || 'rahasia-super-aman-sekali', 
   resave: false,
   saveUninitialized: false,
   cookie: {
     maxAge: 24 * 60 * 60 * 1000,      // 1 hari
-    secure: true,                     // Wajib true untuk Railway (HTTPS)
-    sameSite: 'none'                  // Mencegah masalah cookie cross-domain
+    secure: true,                     // Wajib true karena Railway pakai HTTPS
+    sameSite: 'none',                 // Penting untuk cross-site jika frontend & backend beda domain
+    httpOnly: true                    // Menghindari akses cookie dari Javascript client (lebih aman)
   }
 }));
-
-const offlineCache = new Set();
 
 // === POST Login ===
 app.post('/api/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
-    // Query ke PostgreSQL
+    // Gunakan query berparameter untuk mencegah SQL Injection
     const { rows } = await dbPostgres.query('SELECT * FROM users WHERE username = $1', [username]);
 
     if (rows.length === 0) {
@@ -53,26 +56,23 @@ app.post('/api/login', async (req, res) => {
 
     const user = rows[0];
     const valid = await bcrypt.compare(password, user.password);
+    
     if (!valid) {
       return res.status(401).json({ error: 'Password salah' });
     }
 
-    // Update last_login
-    try {
-      await dbPostgres.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id]);
-    } catch (e) {
-      console.warn('Gagal update last_login:', e.message);
-    }
+    // Update last_login secara async (jangan ditunggu agar login lebih cepat)
+    dbPostgres.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id])
+      .catch(e => console.error('Gagal update last_login:', e.message));
 
     // Simpan data ke session
     req.session.user = {
       id: user.id,
       username: user.username,
-      role: user.role,
-      last_login: user.last_login
+      role: user.role
     };
 
-    // PAKSA SIMPAN session sebelum redirect agar data masuk ke DB dulu
+    // Paksa simpan ke database sebelum memberi respon ke client
     req.session.save((err) => {
       if (err) {
         console.error('Session Save Error:', err);
@@ -88,92 +88,82 @@ app.post('/api/login', async (req, res) => {
   }
 });
 
-// === GET Info Session Aktif ===
-app.get('/api/session', (req, res) => {
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: 'Belum login' });
-  }
-  res.json({ user: req.session.user });
-});
-
 // === POST Logout ===
 app.post('/api/logout', (req, res) => {
-  req.session.destroy(err => {
-    if (err) return res.status(500).json({ error: 'Gagal logout' });
-    res.clearCookie('session_cookie'); // Pastikan sama dengan "key" di config session
-    res.json({ message: 'Berhasil logout' });
-  });
+  if (req.session) {
+    req.session.destroy(err => {
+      if (err) {
+        return res.status(500).json({ error: 'Gagal logout' });
+      }
+      res.clearCookie('session_cookie', { path: '/' }); // Bersihkan cookie secara eksplisit
+      return res.json({ message: 'Berhasil logout' });
+    });
+  } else {
+    res.end();
+  }
 });
 
-// Middleware autentikasi
+// Middleware autentikasi untuk proteksi API
 function requireLogin(req, res, next) {
   if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: 'Unauthorized' });
+    return res.status(401).json({ error: 'Silakan login terlebih dahulu' });
   }
   next();
 }
 
 // === API CRUD untuk PIPA (PostgreSQL Version) ===
-
 // GET semua pipa
 app.get('/api/pipa', async (req, res) => {
   try {
-    // Di PostgreSQL gunakan ST_AsGeoJSON agar tidak perlu parse manual di Node.js
-    let sql = `SELECT ogr_fid, ST_AsGeoJSON(shape) AS geometry, dc_id, dia, jenis, panjang, 
-                      keterangan, lokasi, status, diameter, roughness, zona
-               FROM gis_pipa`;
+    let sql = `
+      SELECT 
+        ogr_fid AS id, 
+        dc_id, dia, jenis, 
+        panjang AS panjang_input,
+        ROUND(ST_Length(shape::geography)) AS panjang_hitung, 
+        keterangan, lokasi, status, diameter, roughness, zona,
+        ST_AsGeoJSON(shape)::json AS geometry
+      FROM gis_pipa
+    `;
     const params = [];
 
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
+        // PostGIS Envelope: West, South, East, North
         const [south, west, north, east] = bbox;
-        // Gunakan operator && (bounding box intersect) yang sangat cepat di PostGIS
         sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
         params.push(west, south, east, north);
       }
     }
 
     const { rows } = await dbPostgres.query(sql, params);
-
-    const parsed = rows.map(row => ({
-      id: row.ogr_fid,
-      dc_id: row.dc_id,
-      dia: row.dia,
-      jenis: row.jenis,
-      panjang: row.panjang,
-      keterangan: row.keterangan,
-      lokasi: row.lokasi,
-      status: row.status,
-      diameter: row.diameter,
-      roughness: row.roughness,
-      zona: row.zona,
-      // GeoJSON formatnya [lng, lat], kita balik ke [lat, lng] untuk Leaflet
-      line: JSON.parse(row.geometry).coordinates.map(c => [c[1], c[0]])
-    }));
-
-    res.json(parsed);
+    res.json(rows);
+    
   } catch (err) {
     console.error('Error get pipa:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Gagal mengambil data pipa' });
   }
 });
 
 // CREATE pipa
-app.post('/api/pipa/create', async (req, res) => {
+app.post('/api/pipa/create', requireLogin, async (req, res) => {
   try {
     const { coords, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona } = req.body;
 
-    if (!coords || coords.length < 2) {
-      return res.status(400).json({ error: 'Pipa minimal 2 titik koordinat' });
+    if (!coords || !Array.isArray(coords) || coords.length < 2) {
+      return res.status(400).json({ error: 'Data koordinat tidak valid (minimal 2 titik)' });
     }
 
-    // PostGIS WKT format (Longitude Latitude)
-    const wkt = `LINESTRING(${coords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
+    // Pastikan koordinat bersih dan urutan benar (Lng Lat)
+    const validCoords = coords.filter(p => p && p.length === 2);
+    const wkt = `LINESTRING(${validCoords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
 
-    const sql = `INSERT INTO gis_pipa (shape, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona)
-                 VALUES (ST_GeomFromText($1, 4326), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-                 RETURNING ogr_fid`; // PostgreSQL menggunakan RETURNING untuk ambil ID baru
+    const sql = `
+      INSERT INTO gis_pipa (shape, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona)
+      VALUES (ST_GeomFromText($1, 4326), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      RETURNING ogr_fid
+    `;
 
     const result = await dbPostgres.query(sql, [
       wkt, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona
@@ -186,55 +176,48 @@ app.post('/api/pipa/create', async (req, res) => {
     });
   } catch (err) {
     console.error("Error create pipa:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Gagal menyimpan pipa ke database" });
   }
 });
 
 // UPDATE pipa
-app.put('/api/pipa/update/:id', async (req, res) => {
+app.put('/api/pipa/update/:id', requireLogin, async (req, res) => {
   try {
     const id = req.params.id;
     const { coords, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona } = req.body;
 
+    if (!coords || coords.length < 2) {
+      return res.status(400).json({ error: 'Data koordinat tidak valid' });
+    }
+
     const wkt = `LINESTRING(${coords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
 
-    const sql = `UPDATE gis_pipa 
-                 SET shape = ST_GeomFromText($1, 4326), dc_id=$2, dia=$3, jenis=$4, panjang=$5, 
-                     keterangan=$6, lokasi=$7, status=$8, diameter=$9, roughness=$10, zona=$11 
-                 WHERE ogr_fid=$12`;
+    const sql = `
+      UPDATE gis_pipa 
+      SET shape = ST_GeomFromText($1, 4326), dc_id=$2, dia=$3, jenis=$4, panjang=$5, 
+          keterangan=$6, lokasi=$7, status=$8, diameter=$9, roughness=$10, zona=$11 
+      WHERE ogr_fid=$12
+    `;
 
-    await dbPostgres.query(sql, [
+    const result = await dbPostgres.query(sql, [
       wkt, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona, id
     ]);
 
-    res.json({ success: true, id, message: "Pipa berhasil diperbarui" });
-  } catch (err) {
-    console.error("Error update pipa:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// DELETE pipa
-app.delete('/api/pipa/delete/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await dbPostgres.query("DELETE FROM gis_pipa WHERE ogr_fid = $1", [id]);
-
     if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Pipa tidak ditemukan" });
+      return res.status(404).json({ error: "Pipa tidak ditemukan" });
     }
 
-    res.json({ message: "Pipa berhasil dihapus" });
+    res.json({ success: true, message: "Pipa berhasil diperbarui" });
   } catch (err) {
-    console.error("Error delete pipa:", err);
-    res.status(500).json({ message: "Server error" });
+    console.error("Error update pipa:", err);
+    res.status(500).json({ error: "Gagal memperbarui data pipa" });
   }
 });
 
 // Endpoint Option (Diameter & Jenis)
 app.get('/api/pipa/option', async (req, res) => {
   try {
-    // Di PostgreSQL, CAST(diameter AS TEXT) jika ingin sorting teks yang berisi angka
+    // Gunakan ORDER BY numeric jika kolom diameter mengandung angka agar sorting rapi (misal: 100, 50, 25)
     const diaQuery = `SELECT DISTINCT diameter FROM gis_pipa WHERE diameter IS NOT NULL ORDER BY diameter DESC`;
     const jenisQuery = `SELECT DISTINCT jenis FROM gis_pipa WHERE jenis IS NOT NULL ORDER BY jenis ASC`;
 
@@ -248,132 +231,138 @@ app.get('/api/pipa/option', async (req, res) => {
       jenis: resJenis.rows.map(r => r.jenis)
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'DB error' });
+    res.status(500).json({ error: 'Gagal memuat opsi pipa' });
   }
 });
 
-// === API CRUD untuk POLYGON ===
-
+// === API CRUD untuk POLYGON (PostgreSQL Version) ===
 // GET semua Polygon
 app.get('/api/polygon', async (req, res) => {
   try {
-    // PostgreSQL menggunakan ST_AsText dan nama tabel case-sensitive (srpolygon)
-    let sql = 'SELECT ogr_fid, ST_AsText(shape) AS coords, nosamw, luas, lsval, nosambckup FROM srpolygon';
+    let sql = `
+      SELECT 
+        ogr_fid AS id, 
+        nosamw, 
+        luas AS luas_input, 
+        lsval, 
+        nosambckup,
+        ST_AsGeoJSON(shape)::json AS geometry,
+        ROUND(ST_Area(shape::geography)) AS luas_hitung -- Hasil presisi m2
+      FROM srpolygon
+    `;
     const params = [];
 
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
         const [south, west, north, east] = bbox;
-        // PostGIS menggunakan ST_MakeEnvelope atau ST_Intersects
         sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
         params.push(west, south, east, north);
       }
     }
 
     const { rows } = await dbPostgres.query(sql, params);
-
-    const parsed = rows.map(row => ({
-      id: row.ogr_fid,
-      nosamw: row.nosamw,
-      luas: row.luas,
-      lsval: row.lsval,
-      nosambckup: row.nosambckup,
-      polygon: parsePolygon(row.coords) // Pastikan helper ini mendukung format 'POLYGON((...))'
-    }));
-
-    res.json(parsed);
+    res.json(rows);
   } catch (err) {
     console.error('Error get polygon:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Gagal mengambil data polygon' });
   }
 });
 
 // CREATE polygon
-app.post('/api/polygon/create', async (req, res) => {
+app.post('/api/polygon/create', requireLogin, async (req, res) => {
   try {
     const { coords, nosamw, nosambckup } = req.body;
 
-    // ... (Logika validasi & closedCoords tetap sama) ...
+    if (!coords || coords.length < 3) {
+      return res.status(400).json({ error: 'Polygon minimal membutuhkan 3 titik' });
+    }
 
-    const lsval = calculateAreaFromCoords(closedCoords);
-    const luas = `${lsval} m²`;
+    // Pastikan polygon tertutup (titik akhir = titik awal)
+    let closedCoords = [...coords];
+    const first = closedCoords[0];
+    const last = closedCoords[closedCoords.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      closedCoords.push(first);
+    }
 
-    // Pastikan urutan Lon Lat: PostGIS WKT adalah (Lon Lat)
+    // Format WKT (Lng Lat)
     const wkt = `POLYGON((${closedCoords.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
 
-    // Query PostgreSQL
-    const sql = `INSERT INTO srpolygon (shape, nosamw, luas, lsval, nosambckup) 
-                 VALUES (ST_GeomFromText($1, 4326), $2, $3, $4, $5) 
-                 RETURNING ogr_fid`;
+    // Biarkan DB menghitung luas secara otomatis saat INSERT
+    const sql = `
+      INSERT INTO srpolygon (shape, nosamw, nosambckup, lsval, luas) 
+      VALUES (
+        ST_GeomFromText($1, 4326), 
+        $2, 
+        $3, 
+        ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), -- Simpan ke lsval
+        CONCAT(ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), ' m²') -- Simpan ke luas
+      ) 
+      RETURNING ogr_fid, lsval AS luas_baru
+    `;
 
-    const { rows } = await dbPostgres.query(sql, [wkt, nosamw, luas, lsval, nosambckup || null]);
+    const { rows } = await dbPostgres.query(sql, [wkt, nosamw, nosambckup || null]);
 
     res.json({
       ogr_fid: rows[0].ogr_fid,
       success: true,
       message: 'Polygon berhasil disimpan',
-      lsval,
-      luas
+      luas_m2: rows[0].luas_baru
     });
   } catch (err) {
     console.error('Error create polygon:', err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: 'Database error saat menyimpan polygon' });
   }
 });
 
 // UPDATE polygon
-app.put('/api/polygon/update/:id', async (req, res) => {
+app.put('/api/polygon/update/:id', requireLogin, async (req, res) => {
   try {
     const { id } = req.params;
     const { coords, nosamw, nosambckup } = req.body;
 
-    const wkt = `POLYGON((${coords.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
-    const lsval = calculateAreaFromCoords(coords);
-    const luas = `${lsval} m²`;
+    if (!coords || coords.length < 3) return res.status(400).json({ error: 'Koordinat tidak valid' });
 
-    const sql = `UPDATE srpolygon 
-                 SET shape = ST_GeomFromText($1, 4326), nosamw=$2, luas=$3, lsval=$4, nosambckup=$5 
-                 WHERE ogr_fid=$6`;
+    // Penutupan otomatis
+    let closed = [...coords];
+    if (closed[0][0] !== closed[closed.length-1][0]) closed.push(closed[0]);
 
-    await dbPostgres.query(sql, [wkt, nosamw, luas, lsval, nosambckup || null, id]);
+    const wkt = `POLYGON((${closed.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
 
-    res.json({ success: true, message: "Berhasil diperbarui" });
+    const sql = `
+      UPDATE srpolygon 
+      SET 
+        shape = ST_GeomFromText($1, 4326), 
+        nosamw = $2, 
+        nosambckup = $3,
+        lsval = ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)),
+        luas = CONCAT(ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), ' m²')
+      WHERE ogr_fid = $4
+    `;
+
+    const result = await dbPostgres.query(sql, [wkt, nosamw, nosambckup || null, id]);
+
+    if (result.rowCount === 0) return res.status(404).json({ error: "Data tidak ditemukan" });
+
+    res.json({ success: true, message: "Polygon berhasil diperbarui" });
   } catch (err) {
+    console.error('Error update polygon:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE polygon
-app.delete('/api/polygon/delete/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await dbPostgres.query("DELETE FROM srpolygon WHERE ogr_fid = $1", [id]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Polygon not found" });
-    }
-
-    res.json({ message: "Polygon deleted successfully" });
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // === API CRUD untuk MARKER ===
-
-// GET semua marker dari 4 tabel berbeda
+// 1. GET semua marker (Optimized with Database Casting)
 app.get('/api/marker', async (req, res) => {
   try {
     let params = [];
     let whereClause = "";
 
-    // Parsing BBox dari query string
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
-        // Urutan: West, South, East, North
+        // PostGIS Envelope: West, South, East, North
         whereClause = `WHERE m.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
         params = [bbox[0], bbox[1], bbox[2], bbox[3]];
       }
@@ -382,7 +371,7 @@ app.get('/api/marker', async (req, res) => {
     const sql = `
       SELECT 
         m.id, 
-        ST_AsGeoJSON(m.geom) AS geometry, 
+        ST_AsGeoJSON(m.geom)::json AS geometry, -- Casting langsung ke JSON di Postgres
         m.tipe, 
         m.keterangan, 
         m.lokasi, 
@@ -401,51 +390,41 @@ app.get('/api/marker', async (req, res) => {
 
     const { rows } = await dbPostgres.query(sql, params);
 
-    const parsed = rows.map(row => {
-      const geo = JSON.parse(row.geometry);
-      return {
-        id: row.id,
-        tipe: row.tipe,
-        keterangan: row.keterangan,
-        lokasi: row.lokasi,
-        elevation: row.elevation,
-        // Balik koordinat GeoJSON [lng, lat] menjadi Leaflet [lat, lng]
-        coords: [geo.coordinates[1], geo.coordinates[0]] 
-      };
-    });
+    // Sekarang mapping jauh lebih ringan karena 'geometry' sudah objek JSON
+    const parsed = rows.map(row => ({
+      ...row,
+      coords: [row.geometry.coordinates[1], row.geometry.coordinates[0]]
+    }));
 
     res.json(parsed);
   } catch (err) {
-    // Log ini akan muncul di Dashboard Railway kamu
     console.error("CRITICAL ERROR MARKER:", err.message);
-    res.status(500).json({ 
-      error: "Gagal memuat marker", 
-      message: err.message 
-    });
+    res.status(500).json({ error: "Gagal memuat marker" });
   }
 });
 
-// CREATE marker
-app.post('/api/marker/create', async (req, res) => {
+// 2. CREATE marker (With Strict Table Validation)
+app.post('/api/marker/create', requireLogin, async (req, res) => {
   try {
     const { coords, dc_id, tipe, keterangan, zona } = req.body;
 
-    if (!coords || coords.length !== 2) {
-      return res.status(400).json({ error: 'Koordinat [lat, lng] wajib diisi' });
-    }
+    // Validasi Input
+    if (!coords || coords.length !== 2) return res.status(400).json({ error: 'Koordinat tidak valid' });
+    
+    // Whitelist tabel untuk mencegah SQL Injection pada nama tabel
+    const whitelist = {
+      'acc': 'gis_acc',
+      'reservoir': 'gis_reservoir',
+      'tank': 'gis_tank',
+      'valve': 'gis_valve'
+    };
 
-    const [lat, lng] = coords;
-    const wkt = `POINT(${lng} ${lat})`;
+    const tableName = whitelist[tipe];
+    if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak terdaftar' });
 
-    // Validasi tabel
-    const allowedTables = ["gis_acc", "gis_reservoir", "gis_tank", "gis_valve"];
-    const table = `gis_${tipe}`;
+    const wkt = `POINT(${coords[1]} ${coords[0]})`;
 
-    if (!allowedTables.includes(table)) {
-      return res.status(400).json({ error: 'Tipe tidak valid' });
-    }
-
-    const sql = `INSERT INTO ${table} (shape, dc_id, keterangan, zona) 
+    const sql = `INSERT INTO ${tableName} (shape, dc_id, keterangan, zona) 
                  VALUES (ST_GeomFromText($1, 4326), $2, $3, $4) 
                  RETURNING ogr_fid`;
 
@@ -457,28 +436,27 @@ app.post('/api/marker/create', async (req, res) => {
       message: `Marker ${tipe} berhasil disimpan`
     });
   } catch (err) {
+    console.error("Create Marker Error:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// UPDATE marker
-app.put('/api/marker/update/:tipe/:id', async (req, res) => {
+// 3. UPDATE marker
+app.put('/api/marker/update/:tipe/:id', requireLogin, async (req, res) => {
   try {
     const { id, tipe } = req.params;
     const { coords, dc_id, keterangan, zona, lokasi, elevation } = req.body;
 
-    if (!coords || coords.length !== 2) {
-      return res.status(400).json({ error: 'Koordinat [lat, lng] wajib diisi' });
-    }
+    const whitelist = { 'acc': 'gis_acc', 'reservoir': 'gis_reservoir', 'tank': 'gis_tank', 'valve': 'gis_valve' };
+    const tableName = whitelist[tipe];
+    
+    if (!tableName) return res.status(400).json({ error: 'Tipe tidak valid' });
+    if (!coords || coords.length !== 2) return res.status(400).json({ error: 'Koordinat wajib [lat, lng]' });
 
-    const [lat, lng] = coords;
-    const wkt = `POINT(${lng} ${lat})`;
-
-    // Tentukan tabel target berdasarkan tipe (acc, reservoir, tank, valve)
-    const table = `gis_${tipe}`;
+    const wkt = `POINT(${coords[1]} ${coords[0]})`;
 
     const sql = `
-      UPDATE ${table} 
+      UPDATE ${tableName} 
       SET 
         shape = ST_GeomFromText($1, 4326), 
         dc_id = $2, 
@@ -490,84 +468,22 @@ app.put('/api/marker/update/:tipe/:id', async (req, res) => {
       WHERE ogr_fid = $7
     `;
 
-    const result = await dbPostgres.query(sql, [
-      wkt, dc_id, keterangan, zona, lokasi, elevation, id
-    ]);
+    const result = await dbPostgres.query(sql, [wkt, dc_id, keterangan, zona, lokasi, elevation, id]);
 
-    if (result.rowCount === 0) {
-      return res.status(404).json({ error: "Data tidak ditemukan" });
-    }
+    if (result.rowCount === 0) return res.status(404).json({ error: "Data tidak ditemukan" });
 
-    res.json({ success: true, message: `Marker ${tipe} berhasil diperbarui` });
+    res.json({ success: true, message: `Marker ${tipe} diperbarui` });
   } catch (err) {
-    console.error("Error update marker:", err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// DELETE marker
-app.delete('/api/marker/delete/:tipe/:id', async (req, res) => {
-  try {
-    const { id, tipe } = req.params;
-    const table = `gis_${tipe}`;
-
-    const sql = `DELETE FROM ${table} WHERE ogr_fid = $1`;
-    const result = await dbPostgres.query(sql, [id]);
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Marker tidak ditemukan" });
-    }
-
-    res.json({ success: true, message: `Marker ${tipe} berhasil dihapus` });
-  } catch (err) {
-    console.error("Error delete marker:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-// Helper untuk hitung luas geodesic polygon (m²)
-function calculateAreaFromCoords(coords) {
-  if (!coords || coords.length < 3) return 0;
-  const R = 6371000; // radius bumi meter
-  let area = 0;
-  for (let i = 0; i < coords.length; i++) {
-    const [lat1, lng1] = coords[i];
-    const [lat2, lng2] = coords[(i + 1) % coords.length];
-    area += (lng2 - lng1) * (2 + Math.sin(lat1 * Math.PI / 180) + Math.sin(lat2 * Math.PI / 180));
-  }
-  area = Math.abs(area) * R * R / 2;
-  return Math.round(area);
-}
-
-// Helper function untuk parse WKT polygon ke array koordinat
-function parsePolygon(wkt) {
-  if (!wkt || !wkt.startsWith('POLYGON')) {
-    return [];
-  }
-
-  try {
-    // Extract koordinat dari POLYGON((lng lat, lng lat, ...))
-    const coordsString = wkt.match(/\(\(([^)]+)\)\)/);
-    if (!coordsString) return [];
-
-    const points = coordsString[1].split(',');
-    return points.map(point => {
-      const [lng, lat] = point.trim().split(' ').map(Number);
-      return [lat, lng]; // Kembalikan sebagai [lat, lng] untuk Leaflet
-    });
-  } catch (err) {
-    console.error('Error parsing polygon WKT:', err, wkt);
-    return [];
-  }
-}
-
 // Telegram Bot Setup
-const token = '8340205720:AAFX6H7cRDyItXB45k6fxDpzWOe0XJFtHjc';
-// const chat_id = '648351920';  // Ganti dengan chat_id milik Anda
-const ADMIN_ID = '648351920';
-
-async function kirimNotifikasiTelegram(chatId, pesan) {
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
+// ==========================================
+// 1. HELPER FUNCTIONS
+// ==========================================
+async function kirimTelegram(chatId, pesan) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
   try {
     const res = await fetch(url, {
       method: 'POST',
@@ -575,286 +491,184 @@ async function kirimNotifikasiTelegram(chatId, pesan) {
       body: JSON.stringify({
         chat_id: chatId,
         text: pesan,
-        parse_mode: 'Markdown'   // cetak *bold*
+        parse_mode: 'Markdown'
       })
     });
-    const data = await res.json();
-    if (!data.ok) {
-      console.error(`❌ Gagal kirim ke ${chatId}:`, data.description);
-    } else {
-      console.log(`✅ Notifikasi terkirim ke ${chatId}`);
-    }
+    return await res.json();
   } catch (err) {
-    console.error(`❌ Error kirim ke ${chatId}:`, err);
+    console.error(`❌ Error Telegram (${chatId}):`, err.message);
   }
 }
 
-// Telegram webhook handler
+function formatWaktu(date) {
+  if (!date) return "-";
+  return new Intl.DateTimeFormat('id-ID', {
+    dateStyle: 'medium',
+    timeStyle: 'medium',
+    timeZone: 'Asia/Jakarta'
+  }).format(new Date(date));
+}
+
+// ==========================================
+// 2. WEBHOOK HANDLER (Bot Logic)
+// ==========================================
 app.post('/webhook', async (req, res) => {
-  const update = req.body;
-  if (!update.message) return res.sendStatus(200);
+  const { message } = req.body;
+  if (!message || !message.text) return res.sendStatus(200);
 
-  const chat_id = update.message.chat.id.toString();
-  const username = update.message.chat.username || '';
-  const text = update.message.text || '';
-
-  console.log("📩 Pesan masuk:", { chat_id, username, text, ADMIN_ID });
+  const chatId = message.chat.id.toString();
+  const text = message.text.trim();
+  const username = message.chat.username || message.chat.first_name || 'User';
 
   try {
-    const [rows] = await db.query("SELECT * FROM notifikasi_telegram WHERE chat_id = ?", [chat_id]);
+    // Gunakan dbPostgres (Pool pusat)
+    const { rows } = await dbPostgres.query("SELECT * FROM notif_telegram WHERE chat_id = $1", [chatId]);
+    const user = rows[0];
 
-    if (chat_id === ADMIN_ID) {
-      console.log("✅ Command dari admin:", text);
+    // --- LOGIKA KHUSUS ADMIN ---
+    if (chatId === ADMIN_ID) {
       if (text === '/listusers') {
-        console.log("📋 Menjalankan perintah /listusers");
-        const [users] = await db.query("SELECT chat_id, username, aktif, created_at FROM notifikasi_telegram ORDER BY created_at DESC");
-        if (users.length === 0) {
-          await kirimNotifikasiTelegram(ADMIN_ID, "📋 Tidak ada user terdaftar.");
-        } else {
-          let daftar = "📋 Daftar User:\n";
-          users.forEach(u => {
-            daftar += `🆔 ${u.chat_id} | 👤 ${u.username || '-'} | ${u.aktif ? '✅ Aktif' : '❌ Nonaktif'} | 📅 ${u.created_at.toISOString().split('T')[0]}\n`;
-          });
-          await kirimNotifikasiTelegram(ADMIN_ID, daftar);
-        }
-      } else if (text.startsWith('/ban_')) {
-        const targetId = text.split('_')[1];
-        await db.query("UPDATE notifikasi_telegram SET aktif = 0 WHERE chat_id = ?", [targetId]);
-        await kirimNotifikasiTelegram(ADMIN_ID, `🚫 User ${targetId} telah dinonaktifkan.`);
-        await kirimNotifikasiTelegram(targetId, "🚫 Akses Anda ke bot telah dicabut.");
-      } else if (text.startsWith('/approve_')) {
-        const targetId = text.split('_')[1];
-        await db.query("UPDATE notifikasi_telegram SET aktif = 1 WHERE chat_id = ?", [targetId]);
-        await kirimNotifikasiTelegram(ADMIN_ID, `✅ User ${targetId} telah diaktifkan.`);
-        await kirimNotifikasiTelegram(targetId, "✅ Akses Anda ke bot telah diaktifkan.");
-      } else if (text.startsWith('/broadcast ')) {
-        console.log("📢 Menjalankan perintah broadcast");
-        const pesan = text.replace('/broadcast ', '').trim();
-        const [users] = await db.query("SELECT chat_id FROM notifikasi_telegram WHERE aktif = 1");
-        for (const u of users) {
-          await kirimNotifikasiTelegram(u.chat_id, pesan);
-        }
-        await kirimNotifikasiTelegram(ADMIN_ID, `📢 Broadcast terkirim ke ${users.length} user aktif.`);
+        const { rows: users } = await dbPostgres.query("SELECT chat_id, username, aktif FROM notif_telegram ORDER BY created_at DESC");
+        let daftar = "📋 *Daftar User:*\n\n";
+        users.forEach((u, i) => {
+          daftar += `${i + 1}. \`${u.chat_id}\` | @${u.username || '-'} | ${u.aktif ? '✅' : '❌'}\n`;
+        });
+        await kirimTelegram(ADMIN_ID, users.length ? daftar : "📋 Belum ada user.");
+        return res.sendStatus(200);
       }
-      return res.sendStatus(200);
-    } else {
-      console.log("❌ Bukan admin:", chat_id);
+
+      if (text.startsWith('/approve_')) {
+        const target = text.split('_')[1];
+        if (!target) return res.sendStatus(200);
+        await dbPostgres.query("UPDATE notif_telegram SET aktif = TRUE WHERE chat_id = $1", [target]);
+        await kirimTelegram(ADMIN_ID, `✅ User ${target} telah disetujui.`);
+        await kirimTelegram(target, "✅ Akses Anda telah aktif. Gunakan /start untuk mulai.");
+        return res.sendStatus(200);
+      }
+      
+      // Broadcast Logic
+      if (text.startsWith('/broadcast ')) {
+        const pesanKonten = text.replace('/broadcast ', '').trim();
+        const { rows: targets } = await dbPostgres.query("SELECT chat_id FROM notif_telegram WHERE aktif = TRUE");
+        for (const target of targets) {
+          await kirimTelegram(target.chat_id, `📢 *BROADCAST*\n\n${pesanKonten}`);
+        }
+        await kirimTelegram(ADMIN_ID, `📢 Terkirim ke ${targets.length} user.`);
+        return res.sendStatus(200);
+      }
     }
 
-    if (rows.length === 0) {
-      await db.query("INSERT INTO notifikasi_telegram (chat_id, username, aktif) VALUES (?, ?, 0)", [chat_id, username]);
-      await kirimNotifikasiTelegram(chat_id, "⏳ Permintaan Anda menunggu persetujuan admin.");
-      await kirimNotifikasiTelegram(ADMIN_ID, `🔔 User baru:\n🆔 ${chat_id} | 👤 ${username}\n\nGunakan /approve_${chat_id} atau /ban_${chat_id}`);
+    // --- LOGIKA PENDAFTARAN USER ---
+    if (!user) {
+      await dbPostgres.query("INSERT INTO notif_telegram (chat_id, username, aktif) VALUES ($1, $2, FALSE)", [chatId, username]);
+      await kirimTelegram(chatId, "⏳ ID Anda terdaftar. Menunggu persetujuan admin.");
+      await kirimTelegram(ADMIN_ID, `🔔 *User Baru Daftar*:\nID: \`${chatId}\`\nUser: @${username}\n\nApprove: /approve_${chatId}`);
       return res.sendStatus(200);
     }
 
-    if (rows[0].aktif === 0) {
-      await kirimNotifikasiTelegram(chat_id, "🚫 Akses Anda belum disetujui admin.");
-      return res.sendStatus(200);
+    if (!user.aktif) {
+      return kirimTelegram(chatId, "🚫 Akses Anda belum disetujui admin.");
     }
 
-    // Tambahkan command lain di sini jika perlu
-    if (rows[0].aktif === 0) {
-      await kirimNotifikasiTelegram(chat_id, "🚫 Akses Anda belum disetujui admin.");
-      return res.sendStatus(200);
+    // --- COMMAND UMUM ---
+    switch (text) {
+      case '/start':
+        await kirimTelegram(chatId, `Halo *${username}*! 👋\nBot pemantau logger aktif.`);
+        break;
+      case '/check':
+        const statusMsg = await getStatusLogger();
+        await kirimTelegram(chatId, statusMsg);
+        break;
+      case '/help':
+        await kirimTelegram(chatId, "❓ *Perintah*:\n/check - Status saat ini\n/help - Bantuan");
+        break;
+      default:
+        await kirimTelegram(chatId, "✅ Gunakan /check untuk melihat status logger.");
     }
-
-    // ===================== Command umum =====================
-    if (text === '/start') {
-      const pesan =
-        `Selamat datang *${username || 'pengguna'}* 👋\n\n` +
-        "Bot ini digunakan untuk memantau kondisi logger.\n\n" +
-        "📌 Perintah tersedia:\n" +
-        "/check - Cek status logger saat ini\n\n" +
-        "Notifikasi otomatis akan dikirim jika ada logger offline / online kembali.";
-
-      await kirimNotifikasiTelegram(chat_id, pesan);
-      return res.sendStatus(200);
-
-    } else if (text === '/check') {
-      const status = await getStatusLoggerSekarang();
-      await kirimNotifikasiTelegram(chat_id, status);
-      return res.sendStatus(200);
-
-    } else if (text === '/info') {
-      const pesan = "ℹ️ Bot Notifikasi Logger\n\n" +
-        "- Digunakan untuk memantau kondisi logger\n" +
-        "- Anda akan menerima notifikasi otomatis jika ada perubahan\n";
-      await kirimNotifikasiTelegram(chat_id, pesan);
-      return res.sendStatus(200);
-
-    } else if (text === '/help') {
-      const pesan = "❓ Bantuan Perintah:\n\n" +
-        "/start - Mulai interaksi dengan bot\n" +
-        "/check - Cek status logger saat ini\n" +
-        "/info  - Informasi singkat tentang bot\n" +
-        "/help  - Menampilkan daftar perintah\n";
-      await kirimNotifikasiTelegram(chat_id, pesan);
-      return res.sendStatus(200);
-    }
-    // =========================================================
-
-    // Default jika bukan command yang dikenali
-    await kirimNotifikasiTelegram(chat_id, "✅ Perintah tidak tersedia.");
 
     res.sendStatus(200);
-
-  } catch (e) {
-    console.error("Webhook error:", e);
+  } catch (err) {
+    console.error("Webhook Error:", err);
     res.sendStatus(500);
   }
 });
 
-function formatWaktu(iso) {
-  return new Date(iso).toLocaleString('id-ID', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  }).replace(/\./g, ':');
-}
-
-async function cekLoggerOffline() {
-  try {
-    const [lokasiList] = await db.query('SELECT idmet, nama FROM lokasi WHERE skip_monitor = 0');
-    const [dataSensor] = await dbSensor.query(`
-      SELECT idmet, MAX(jam) AS jam_terakhir
-      FROM metinlogger_fuji_new
-      GROUP BY idmet
-    `);
-
-    const now = new Date();
-    const offlineToNotify = [];
-    const backOnlineToNotify = [];
-
-    lokasiList.forEach(lokasi => {
-      const data = dataSensor.find(s => s.idmet === lokasi.idmet);
-      const jamTerakhir = data ? new Date(data.jam_terakhir) : null;
-      const selisihJam = jamTerakhir ? (now - jamTerakhir) / (1000 * 60 * 60) : Infinity;
-
-      const isOffline = isNaN(jamTerakhir?.getTime()) || selisihJam > 1;
-
-      if (isOffline) {
-        if (!offlineCache.has(lokasi.idmet)) {
-          offlineCache.add(lokasi.idmet);
-          const lastDataTime = jamTerakhir ? formatWaktu(jamTerakhir) : '-';
-          offlineToNotify.push(
-            `${offlineToNotify.length + 1}. ${lokasi.nama} (${lokasi.idmet})\n   Data terakhir: ${lastDataTime}`
-          );
-        }
-      } else {
-        if (offlineCache.has(lokasi.idmet)) {
-          const lastDataTime = jamTerakhir ? formatWaktu(jamTerakhir) : '-';
-          backOnlineToNotify.push(
-            `${backOnlineToNotify.length + 1}. ${lokasi.nama} (${lokasi.idmet})\n   Data terakhir: ${lastDataTime}`
-          );
-          offlineCache.delete(lokasi.idmet);
-        }
-      }
-    });
-
-    // Ambil semua user aktif
-    const [users] = await db.query("SELECT chat_id FROM notifikasi_telegram WHERE aktif = 1");
-
-    if (offlineToNotify.length > 0) {
-      const pesan = `⚠️ Logger baru terdeteksi offline >1 jam:\n\n${offlineToNotify.join('\n\n')}`;
-      for (const u of users) {
-        await kirimNotifikasiTelegram(u.chat_id, pesan);
-      }
-    }
-
-    if (backOnlineToNotify.length > 0) {
-      const pesan = `✅ Logger berikut sudah kembali online:\n\n${backOnlineToNotify.join('\n\n')}`;
-      for (const u of users) {
-        await kirimNotifikasiTelegram(u.chat_id, pesan);
-      }
-    }
-
-    if (offlineToNotify.length === 0 && backOnlineToNotify.length === 0) {
-      console.log("ℹ️ Tidak ada perubahan status logger.");
-    }
-
-  } catch (err) {
-    console.error("❌ Error saat cek logger offline:", err.message);
-  }
-}
-
-async function getStatusLoggerSekarang() {
-  const [lokasiList] = await db.query('SELECT idmet, nama FROM lokasi WHERE skip_monitor = 0');
-  const [dataSensor] = await dbSensor.query(`
-    SELECT idmet, MAX(jam) AS jam_terakhir
-    FROM metinlogger_fuji_new
-    GROUP BY idmet
-  `);
-
+// ==========================================
+// 3. LOGIKA MONITORING (CORE)
+// ==========================================
+async function getStatusLogger() {
+  const query = `
+    SELECT l.nama, ll.jam 
+    FROM lokasi_logger l
+    LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
+    WHERE l.skip_monitor = 0
+  `;
+  const { rows } = await dbPostgres.query(query);
   const now = new Date();
-  // let online = [];
-  let onlineCount = 0;
   let offline = [];
+  let onlineCount = 0;
 
-  lokasiList.forEach((lokasi, idx) => {
-    const data = dataSensor.find(s => s.idmet === lokasi.idmet);
-    const jamTerakhir = data ? new Date(data.jam_terakhir) : null;
-    const selisihJam = jamTerakhir ? (now - jamTerakhir) / (1000 * 60 * 60) : Infinity;
-
-    const isOffline = isNaN(jamTerakhir?.getTime()) || selisihJam > 1;
-    const lastDataTime = jamTerakhir ? formatWaktu(jamTerakhir) : '-';
-
-    const baris =
-      `${lokasi.nama} (${lokasi.idmet})\n` +
-      `   Data terakhir: ${lastDataTime}`;
-
-    if (isOffline) {
-      offline.push(`🔴 ${offline.length + 1}. ${baris}`);
+  rows.forEach(row => {
+    const selisihJam = row.jam ? (now - new Date(row.jam)) / (1000 * 60 * 60) : Infinity;
+    if (selisihJam > 1) {
+      offline.push(`🔴 ${row.nama} (${formatWaktu(row.jam)})`);
     } else {
-      // online.push(`🟢 ${online.length + 1}. ${baris}`);
       onlineCount++;
     }
   });
 
-  let pesan = `📊 *Status Logger Saat Ini*\n`;
-  pesan += `⏱ ${formatWaktu(now)}\n\n`;
-
-  // if (offline.length > 0) {
-  //   pesan += `⚠️ *OFFLINE (>1 jam)*\n\n${offline.join('\n\n')}\n\n`;
-  // } else {
-  //   pesan += `✅ Semua logger ONLINE\n\n`;
-  // }
-
-  // if (online.length > 0) {
-  //   pesan += `🟢 *ONLINE*\n\n${online.join('\n\n')}`;
-  // }
-
-  if (offline.length > 0) {
-    pesan += `⚠️ *OFFLINE (>1 jam)*\n\n`;
-    pesan += offline.join('\n\n');
-    pesan += `\n\n`;
-  } else {
-    pesan += `✅ Tidak ada logger offline\n\n`;
-  }
-
-  pesan += `🟢 *ONLINE*: ${onlineCount} logger`;
-
-  return pesan;
+  return `📊 *Status Logger*\n⏱ ${formatWaktu(now)}\n\n` +
+         (offline.length ? `⚠️ *OFFLINE*:\n${offline.join('\n')}\n\n` : `✅ Semua Online\n`) +
+         `🟢 *ONLINE*: ${onlineCount}`;
 }
 
+async function cekLoggerDanNotif() {
+  try {
+    const query = `
+      SELECT l.idmet, l.nama, ll.jam,
+             CASE WHEN ll.jam < NOW() - INTERVAL '1 hour' OR ll.jam IS NULL THEN 'OFFLINE' ELSE 'ONLINE' END as status_skr,
+             ns.status_terakhir as status_lama
+      FROM lokasi_logger l
+      LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
+      LEFT JOIN notif_status ns ON l.idmet = ns.idmet
+      WHERE l.skip_monitor = 0
+    `;
+    const { rows } = await dbPostgres.query(query);
+    let alerts = [];
+
+    for (const r of rows) {
+      if (r.status_skr !== r.status_lama) {
+        // Simpan status baru ke notif_status
+        await dbPostgres.query(
+          `INSERT INTO notif_status (idmet, status_terakhir, last_change) 
+           VALUES ($1, $2, NOW()) 
+           ON CONFLICT (idmet) 
+           DO UPDATE SET status_terakhir = EXCLUDED.status_terakhir, last_change = NOW()`,
+          [r.idmet, r.status_skr]
+        );
+        const icon = r.status_skr === 'OFFLINE' ? '🔴' : '🟢';
+        alerts.push(`${icon} *${r.status_skr}*: ${r.nama}\nJam: ${formatWaktu(r.jam)}`);
+      }
+    }
+
+    if (alerts.length > 0) {
+      const { rows: users } = await dbPostgres.query("SELECT chat_id FROM notif_telegram WHERE aktif = TRUE");
+      const pesan = alerts.join('\n\n');
+      for (const u of users) {
+        await kirimTelegram(u.chat_id, pesan);
+      }
+    }
+  } catch (err) {
+    console.error("Cron Error:", err.message);
+  }
+}
+
+// ==========================================
+// 4. CRON SCHEDULE
+// ==========================================
 cron.schedule('*/10 * * * *', () => {
-  console.log('🕒 Menjalankan pengecekan logger offline setiap 10 menit...'); // */10 * * * *
-  cekLoggerOffline();
+  cekLoggerDanNotif();
 });
-
-cron.schedule('45 6 * * *', () => { //
-  console.log("🔁 Reset offlineCache harian pada jam 06:45 WIB");
-  console.log("Logger offline yang akan di-reset:", [...offlineCache]);
-  offlineCache.clear();
-}, {
-  timezone: "Asia/Jakarta"
-});
-
-
-// app.use(express.static(path.join(__dirname, '../frontend'), { index: false })); // untuk mengabaikan file index.html
 
 app.use(express.static(path.join(__dirname, '../frontend')));
 // === Redirect root ke login.html ===
@@ -867,4 +681,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });
-

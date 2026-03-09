@@ -121,7 +121,8 @@ const MapManager = {
             center: this.config.mapCenter,
             zoom: this.config.defaultZoom,
             layers: [this.baseLayers["Citra Satelit"]],
-            maxZoom: this.config.maxZoom
+            maxZoom: this.config.maxZoom,
+            renderer: L.canvas({ padding: 0.5 })
         });
 
         // **SIMPLE: Add layer groups yang selalu visible saja**
@@ -790,56 +791,60 @@ const MapManager = {
     _calculateGeometryInArea(selectionPolygon) {
         let totalPoint = 0, totalLine = 0, totalPolygon = 0;
 
-        // 1. Hitung Point dan Line dari Layer yang Ada di Peta
-        // Asumsi: Point dan Line tidak dikosongkan/selalu ada di geometryLayer saat layer aktif.
+        // 1. Dapatkan BBox dari area seleksi (Sangat cepat)
+        const selectionLayer = L.geoJSON(selectionPolygon);
+        const selectionBounds = selectionLayer.getBounds();
+
+        // 2. Iterasi semua layer di geometryLayer
         this.layers.geometryLayer.eachLayer(layer => {
-            const feature = layer.toGeoJSON();
-            switch (feature.geometry.type) {
-                case 'Point':
-                    if (turf.booleanPointInPolygon(feature, selectionPolygon)) totalPoint++;
-                    break;
-                case 'LineString':
-                    if (turf.booleanWithin(feature, selectionPolygon) || turf.booleanIntersects(feature, selectionPolygon)) totalLine++;
-                    break;
-                case 'Polygon':
-                    // Jika layer Polygon terlihat di peta, hitung dari peta (seperti yang dilakukan sebelumnya).
-                    if (this.state.layerVisibility.polygons && turf.booleanWithin(feature, selectionPolygon)) {
-                        totalPolygon++;
+            // Cek apakah layer ini memiliki koordinat/bounds
+            const itemBounds = layer.getBounds ? layer.getBounds() : L.latLngBounds(layer.getLatLng(), layer.getLatLng());
+
+            // FILTER TAHAP 1: Cek apakah BBox item ada di dalam BBox seleksi
+            // Ini operasi matematika sederhana (jauh lebih cepat dari Turf)
+            if (selectionBounds.intersects(itemBounds)) {
+
+                // FILTER TAHAP 2: Jika lolos BBox, baru jalankan kalkulasi presisi Turf
+                const feature = layer.toGeoJSON();
+
+                try {
+                    switch (feature.geometry.type) {
+                        case 'Point':
+                            if (turf.booleanPointInPolygon(feature, selectionPolygon)) totalPoint++;
+                            break;
+                        case 'LineString':
+                            // Gunakan booleanIntersects untuk pipa agar lebih akurat
+                            if (turf.booleanIntersects(feature, selectionPolygon)) totalLine++;
+                            break;
+                        case 'Polygon':
+                            // Hanya hitung jika poligon benar-benar di dalam atau berpotongan
+                            if (this.state.layerVisibility.polygons && turf.booleanIntersects(feature, selectionPolygon)) {
+                                totalPolygon++;
+                            }
+                            break;
                     }
-                    break;
+                } catch (e) {
+                    console.warn("Kalkulasi spasial gagal untuk satu item:", e);
+                }
             }
         });
 
-        // 2. Analisis Polygon dari CACHE (Jika Layer Visual Tidak Aktif)
-        const isPolygonLayerVisible = this.state.layerVisibility.polygons;
-
-        // Jika layer Polygon tidak aktif/terlihat, gunakan data cache untuk penghitungan Polygon
-        if (!isPolygonLayerVisible && this.state.cachedPolygonData.length > 0) {
-
-            // Iterasi data cache
+        // 3. Analisis dari CACHE (Jika layer poligon tidak aktif)
+        // Gunakan logika yang sama: Cek BBox dulu baru Turf
+        if (!this.state.layerVisibility.polygons && this.state.cachedPolygonData.length > 0) {
             this.state.cachedPolygonData.forEach(polyData => {
-                // Asumsi polyData memiliki properti 'polygon' (array of [lat, lng])
                 if (polyData.polygon && polyData.polygon.length >= 3) {
-
-                    // Konversi koordinat: [lat, lng] -> [lng, lat]
+                    // Konversi cepat ke Lng/Lat untuk Turf
                     const turfCoords = [polyData.polygon.map(coord => [coord[1], coord[0]])];
+                    const polygonFeature = turf.polygon(turfCoords);
 
-                    try {
-                        const polygonFeature = turf.polygon(turfCoords);
-
-                        // selectionPolygon adalah GeoJSON dari Leaflet.Draw, yang biasanya berupa FeatureCollection
-                        if (turf.booleanWithin(polygonFeature, selectionPolygon.features[0])) {
-                            totalPolygon++;
-                        }
-                    } catch (e) {
-                        // Abaikan data yang formatnya tidak valid untuk turf.polygon
-                        // console.error("Gagal konversi Turf dari cache:", e); 
+                    // Gunakan turf.bboxPolygon untuk pengecekan cepat sebelum booleanWithin
+                    if (turf.booleanIntersects(polygonFeature, selectionPolygon)) {
+                        totalPolygon++;
                     }
                 }
             });
         }
-
-        // Jika layer Polygon visible (terlihat) dan diisi dengan data, totalPolygon dari Step 1 sudah benar.
 
         return `<b>Point:</b> ${totalPoint}<br><b>Line:</b> ${totalLine}<br><b>Polygon:</b> ${totalPolygon}`;
     },
@@ -1051,9 +1056,7 @@ const MapManager = {
     // },
 
     async loadPipa(bbox) {
-        if (!this.layers.map || !this.state.layerVisibility.pipes) {
-            return; // Jangan load jika layer tidak visible
-        }
+        if (!this.layers.map || !this.state.layerVisibility.pipes) return;
 
         try {
             const res = await fetch(`/api/pipa?bbox=${bbox}`);
@@ -1063,23 +1066,8 @@ const MapManager = {
             this.layers.pipeGroup.clearLayers();
 
             data.forEach(pipe => {
-                if (!pipe.line || !Array.isArray(pipe.line)) {
-                    console.warn("❌ Data pipa invalid:", pipe);
-                    return;
-                }
-
-                const validCoords = pipe.line.filter(pt => {
-                    if (pt.length === 2) {
-                        const [a, b] = pt;
-                        return (a >= -90 && a <= 90) && (b >= -180 && b <= 180);
-                    }
-                    return false;
-                });
-
-                if (validCoords.length < 2) {
-                    console.warn("❌ Koordinat pipa tidak valid:", pipe);
-                    return;
-                }
+                const validCoords = (pipe.line || []).filter(pt => pt.length === 2);
+                if (validCoords.length < 2) return;
 
                 const color = this.state.diamtrColors[pipe.diameter] || "red";
                 const line = L.polyline(validCoords, {
@@ -1088,56 +1076,51 @@ const MapManager = {
                     pane: "pipaPane"
                 }).addTo(this.layers.pipeGroup);
 
-                this.layers.geometryLayer.addLayer(line);
+                // SIMPAN DATA MENTAH DI PROPERTI LAYER
+                line.featureData = pipe;
                 line._pipeId = pipe.id;
-                line._defaultColor = color;
+
+                this.layers.geometryLayer.addLayer(line);
                 this.layers.pipaLayers[pipe.id] = line;
 
-                const diameterOptions = this.state.diameterList.map(d =>
-                    `<option value="${d}" ${d === pipe.diameter ? "selected" : ""}>DN${d}</option>`
-                ).join("");
+                // LAZY POPUP: Fungsi ini hanya jalan saat diklik
+                line.bindPopup(() => {
+                    const d = line.featureData;
+                    const diameterOptions = this.state.diameterList.map(dia =>
+                        `<option value="${dia}" ${dia === d.diameter ? "selected" : ""}>DN${dia}</option>`
+                    ).join("");
 
-                const jenisOptions = this.state.jenisList.map(j =>
-                    `<option value="${j}" ${j === pipe.jenis ? "selected" : ""}>${j}</option>`
-                ).join("");
+                    const jenisOptions = this.state.jenisList.map(j =>
+                        `<option value="${j}" ${j === d.jenis ? "selected" : ""}>${j}</option>`
+                    ).join("");
 
-                line.bindPopup(`
+                    return `
                     <div class="p-2" style="min-width:250px">
                         <div class="fw-bold mb-2 text-center">Edit Pipa</div>
                         <div class="mb-2">
                             <label class="form-label small mb-1">Diameter</label>
-                            <select class="form-select form-select-sm" name="editDiameter">
-                                <option value="">-- Pilih Diameter --</option>
-                                ${diameterOptions}
-                            </select>
+                            <select class="form-select form-select-sm" name="editDiameter">${diameterOptions}</select>
                         </div>
                         <div class="mb-2">
                             <label class="form-label small mb-1">Jenis</label>
-                            <select class="form-select form-select-sm" name="editJenis">
-                                <option value="">-- Pilih Jenis --</option>
-                                ${jenisOptions}
-                            </select>
+                            <select class="form-select form-select-sm" name="editJenis">${jenisOptions}</select>
                         </div>
                         <div class="d-flex gap-1 mt-3">
-                            <button class="btn btn-sm btn-success flex-fill btn-save" data-type="pipe" data-id="${pipe.id}">💾 Simpan</button>
-                            <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="pipe" data-id="${pipe.id}">✏️ Edit</button>
-                            <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="pipe" data-id="${line._pipeId}">❌ Batal</button>
-                            <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="pipe" data-id="${pipe.id}">🗑️ Hapus</button>
+                            <button class="btn btn-sm btn-success flex-fill btn-save" data-type="pipe" data-id="${d.id}">💾 Simpan</button>
+                            <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="pipe" data-id="${d.id}">✏️ Edit</button>
+                            <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="pipe" data-id="${d.id}">🗑️ Hapus</button>
                         </div>
-                    </div>
-                `);
+                    </div>`;
+                });
             });
-
-            console.log(`✅ Line loaded: ${data.length}`);
+            console.log(`✅ Line loaded & Lazy Popup applied: ${data.length}`);
         } catch (err) {
             console.error("⚠️ Gagal load pipa:", err);
         }
     },
 
     async loadPolygon(bbox) {
-        if (!this.layers.map || !this.state.layerVisibility.polygons) {
-            return; // Jangan load jika layer tidak visible
-        }
+        if (!this.layers.map || !this.state.layerVisibility.polygons) return;
         try {
             this.layers.polygonGroup.clearLayers();
 
@@ -1146,23 +1129,8 @@ const MapManager = {
             const data = await response.json();
 
             data.forEach(poly => {
-                if (!poly.polygon || !Array.isArray(poly.polygon)) {
-                    console.warn("❌ Data polygon invalid:", poly);
-                    return;
-                }
-
-                const validCoords = poly.polygon.filter(pt => {
-                    if (pt.length === 2) {
-                        const [a, b] = pt;
-                        return (a >= -90 && a <= 90) && (b >= -180 && b <= 180);
-                    }
-                    return false;
-                });
-
-                if (validCoords.length < 3) {
-                    console.warn("❌ Koordinat polygon tidak valid:", poly);
-                    return;
-                }
+                const validCoords = (poly.polygon || []).filter(pt => pt.length === 2);
+                if (validCoords.length < 3) return;
 
                 const polygon = L.polygon(validCoords, {
                     color: 'blue',
@@ -1171,39 +1139,37 @@ const MapManager = {
                     pane: 'polygonPane'
                 }).addTo(this.layers.polygonGroup);
 
-                this.layers.geometryLayer.addLayer(polygon);
+                // SIMPAN DATA MENTAH
+                polygon.featureData = poly;
                 polygon._polygonId = poly.id;
-                polygon._defaultColor = 'blue';
 
-                polygon.bindPopup(`
+                this.layers.geometryLayer.addLayer(polygon);
+
+                // LAZY POPUP
+                polygon.bindPopup(() => {
+                    const d = polygon.featureData;
+                    return `
                     <div class="p-2" style="min-width:250px">
                         <div class="fw-bold mb-2 text-center">Edit Polygon</div>
                         <div class="mb-2">
                             <label class="form-label small mb-1">No SAMW</label>
-                            <input type="text" class="form-control form-control-sm" name="editNosamw" value="${poly.nosamw || ''}">
+                            <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
                         </div>
                         <div class="mb-2">
                             <label class="form-label small mb-1">Luas (m²)</label>
-                            <input type="text" class="form-control form-control-sm" name="editLuas" value="${poly.lsval || 0}" readonly>
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label small mb-1">Backup</label>
-                            <input type="text" class="form-control form-control-sm" name="editBackup" value="${poly.nosambckup || ''}">
+                            <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.lsval || 0}" readonly>
                         </div>
                         <div class="d-flex gap-1 mt-3">
-                            <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${poly.id}">💾 Simpan</button>
-                            <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${poly.id}">✏️ Edit</button>
-                            <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="srpolygon" data-id="${poly.id}">❌ Batal</button>
-                            <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${poly.id}">🗑️ Hapus</button>
+                            <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
+                            <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
+                            <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
                         </div>
-                    </div>
-                `, { autoPan: false });
+                    </div>`;
+                }, { autoPan: false });
             });
 
-            this.state.cachedPolygonData = data; // Simpan data mentah di cache
-            this.state.polygonCount = data.length; // Update count
-
-            console.log(`✅ Polygon loaded: ${data.length}`);
+            this.state.cachedPolygonData = data;
+            console.log(`✅ Polygon loaded & Lazy Popup applied: ${data.length}`);
         } catch (err) {
             console.error('Gagal load polygon:', err);
         }
