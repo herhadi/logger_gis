@@ -134,6 +134,7 @@ const MapManager = {
             zoom: this.config.defaultZoom,
             layers: [this.baseLayers["Citra Satelit"]],
             maxZoom: this.config.maxZoom,
+            preferCanvas: true,
             renderer: L.canvas({ padding: 0.5 })
         });
 
@@ -644,28 +645,23 @@ const MapManager = {
         }
     },
 
-
     _handleOverlayChange(e) {
-        // PATCH: BLOKIR EVENT SELAMA INISIALISASI
-        if (this.state.isInitializing) {
-            console.log('⚠️ Overlay change ignored during initialization.');
-            return;
-        }
+        if (this.state.isInitializing) return;
 
         const layerName = this._getLayerNameFromEvent(e);
         console.log('🎯 Handling overlay change for:', layerName, 'Type:', e.type);
+        const isVisible = e.type === 'overlayadd';
 
-        if (layerName) {
-            const isVisible = e.type === 'overlayadd';
-            // this.state.layerVisibility[layerName] = isVisible;
+        // Update state global agar loadAllLayers tahu apa yang harus ditarik
+        this.state.layerVisibility[layerName] = isVisible;
 
-            // // ✅ FIX: Untuk polygon layer, load data jika diaktifkan
-            // if (layerName === 'polygons' && isVisible && !this._layerHasData('polygons')) {
-            //     console.log('🚀 Triggering immediate load for polygons...');
-            //     this._loadLayerImmediately('polygons');
-            // }
-
+        if (isVisible) {
+            // Jika dinyalakan, picu load ulang untuk area saat ini
+            this.loadAllLayers();
             console.log('📊 New visibility state:', this.state.layerVisibility);
+        } else {
+            // Jika dimatikan, paksa pembersihan memori untuk layer tersebut
+            this._clearLayerData(layerName);
         }
     },
 
@@ -743,12 +739,24 @@ const MapManager = {
         switch (layerName) {
             case 'markers':
                 this.layers.markerGroup.clearLayers();
+                // Jika kamu memetakan marker ke ID untuk pencarian, kosongkan juga
+                this.layers.markerMap = {};
                 break;
             case 'pipes':
                 this.layers.pipeGroup.clearLayers();
+                // KRUSIAL: Bersihkan referensi di geometryLayer agar RAM lega
+                if (this.layers.geometryLayer) {
+                    this.layers.geometryLayer.clearLayers();
+                }
+                this.state.cachedPipeData = [];
                 break;
             case 'polygons':
                 this.layers.polygonGroup.clearLayers();
+                // Sama seperti pipa, geometryLayer harus ikut bersih
+                if (this.layers.geometryLayer) {
+                    this.layers.geometryLayer.clearLayers();
+                }
+                this.state.cachedPolygonData = [];
                 break;
             // newPipes dan newPolygons tidak di-clear karena data local
         }
