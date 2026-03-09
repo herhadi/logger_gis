@@ -306,14 +306,15 @@ app.post('/api/polygon/create', requireLogin, async (req, res) => {
     const wkt = `POLYGON((${closedCoords.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
 
     // Biarkan DB menghitung luas secara otomatis saat INSERT
+    // Tambahkan ST_MakeValid agar poligon "melintir" tetap bisa disimpan & dihitung luasnya
     const sql = `
       INSERT INTO gis_srpolygon (shape, nosamw, nosambckup, lsval, luas) 
       VALUES (
-        ST_GeomFromText($1, 4326), 
+        ST_MakeValid(ST_GeomFromText($1, 4326)), 
         $2, 
         $3, 
-        ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), -- Simpan ke lsval
-        CONCAT(ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), ' m²') -- Simpan ke luas
+        ROUND(ST_Area(ST_MakeValid(ST_GeomFromText($1, 4326))::geography)), 
+        CONCAT(ROUND(ST_Area(ST_MakeValid(ST_GeomFromText($1, 4326))::geography)), ' m²')
       ) 
       RETURNING ogr_fid, lsval AS luas_baru
     `;
@@ -327,8 +328,11 @@ app.post('/api/polygon/create', requireLogin, async (req, res) => {
       luas_m2: rows[0].luas_baru
     });
   } catch (err) {
-    console.error('Error create polygon:', err);
-    res.status(500).json({ error: 'Database error saat menyimpan polygon' });
+    console.error('Error create polygon:', err.message); // Cetak pesan spesifik
+    res.status(500).json({ 
+        error: 'Database error saat menyimpan polygon',
+        detail: err.message // Kirim detail error ke browser
+    });
   }
 });
 
