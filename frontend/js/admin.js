@@ -1065,8 +1065,8 @@ const MapManager = {
         } catch (err) {
             console.error("⚠️ Gagal load pipa:", err);
         }
-    }
-
+    },
+    
     async loadPolygon(bbox) {
         if (!this.layers.map || !this.state.layerVisibility.polygons) return;
         try {
