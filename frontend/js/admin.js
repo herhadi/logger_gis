@@ -137,32 +137,29 @@ const MapManager = {
             renderer: L.canvas({ padding: 0.5 })
         });
 
-        // **SIMPLE: Add layer groups yang selalu visible saja**
+        // 1. BUAT PANE TERLEBIH DAHULU (Paling Bawah ke Paling Atas)
+        this.layers.map.createPane('polygonPane').style.zIndex = 400;
+        this.layers.map.createPane('pipaPane').style.zIndex = 450;
+        this.layers.map.createPane('markerPane').style.zIndex = 500;
+
+        // 2. DAFTARKAN LAYER GROUP KE PETA
         this.layers.map.addLayer(this.layers.editableLayers);
         this.layers.map.addLayer(this.layers.geometryLayer);
         this.layers.map.addLayer(this.layers.selectionLayer);
 
-        // **PATCH PENTING:** Tambahkan layer yang true di state awal ke peta
-        if (this.state.layerVisibility.markers) {
-            this.layers.map.addLayer(this.layers.markerGroup);
-        }
-        if (this.state.layerVisibility.pipes) {
-            this.layers.map.addLayer(this.layers.pipeGroup);
-        }
-        if (this.state.layerVisibility.newPipes) {
-            this.layers.map.addLayer(this.layers.pipeGroupNew);
-        }
-        if (this.state.layerVisibility.newPolygons) {
-            this.layers.map.addLayer(this.layers.polygonGroupNew);
+        // Patch Visibility
+        if (this.state.layerVisibility.markers) this.layers.map.addLayer(this.layers.markerGroup);
+        if (this.state.layerVisibility.pipes) this.layers.map.addLayer(this.layers.pipeGroup);
+
+        // Pastikan polygonGroup juga ditambahkan ke peta agar bisa muncul
+        if (this.state.layerVisibility.polygons) {
+            this.layers.map.addLayer(this.layers.polygonGroup);
         }
 
-        // Tambahkan layer untuk marker baru
+        if (this.state.layerVisibility.newPipes) this.layers.map.addLayer(this.layers.pipeGroupNew);
+        if (this.state.layerVisibility.newPolygons) this.layers.map.addLayer(this.layers.polygonGroupNew);
+
         this.layers.map.addLayer(this.state.markerGroupNew);
-
-        // Create panes
-        this.layers.map.createPane('polygonPane').style.zIndex = 400;
-        this.layers.map.createPane('pipaPane').style.zIndex = 450;
-        this.layers.map.createPane('markerPane').style.zIndex = 500;
     },
 
     _setupControls() {
