@@ -1031,15 +1031,14 @@ const MapManager = {
             this.layers.pipeGroup.clearLayers();
 
             data.forEach(pipe => {
-                // 1. Ambil koordinat dari geometry.coordinates (GeoJSON LineString)
-                const rawCoords = pipe.geometry && pipe.geometry.coordinates ? pipe.geometry.coordinates : [];
+                // 1. Backend baru langsung mengirim array koordinat di properti 'geometry'
+                const validCoords = pipe.geometry || [];
 
-                // 2. Filter & Balik urutan: [Lng, Lat] -> [Lat, Lng]
-                const validCoords = rawCoords
-                    .filter(pt => pt.length === 2)
-                .map(pt => [pt[1], pt[0]]);
-
-                if (validCoords.length < 2) return;
+                // 2. Tidak perlu .filter atau .map lagi karena sudah bersih dan urut dari SQL
+                if (validCoords.length < 2) {
+                    console.warn(`❌ Pipa ID ${pipe.id} tidak memiliki koordinat valid`);
+                    return;
+                }
 
                 const color = this.state.diamtrColors[pipe.diameter] || "red";
                 const line = L.polyline(validCoords, {
@@ -1048,7 +1047,7 @@ const MapManager = {
                     pane: "pipaPane"
                 }).addTo(this.layers.pipeGroup);
 
-                // Simpan data mentah untuk Lazy Popup
+                // Simpan data mentah untuk Lazy Popup & Filter
                 line.featureData = pipe;
                 line._pipeId = pipe.id;
 
@@ -1056,8 +1055,13 @@ const MapManager = {
 
                 line.bindPopup(() => {
                     const d = line.featureData;
-                    // ... logika diameterOptions & jenisOptions tetap sama ...
-                    return `<div class="p-2"><b>ID Pipa:</b> ${d.id}<br><b>DN:</b> ${d.diameter}</div>`;
+                    return `
+            <div class="p-2">
+                <b>ID Pipa:</b> ${d.id}<br>
+                <b>DN:</b> ${d.diameter}<br>
+                <b>Jenis:</b> ${d.jenis || '-'}<br>
+                <b>Panjang:</b> ${d.panjang_hitung || 0} m
+            </div>`;
                 });
             });
 

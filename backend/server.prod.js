@@ -368,6 +368,29 @@ app.put('/api/polygon/update/:id', requireLogin, async (req, res) => {
   }
 });
 
+// DELETE polygon
+app.delete('/api/polygon/delete/:id', requireLogin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    // Gunakan dbPostgres agar konsisten dengan endpoint lainnya
+    const result = await dbPostgres.query(
+      "DELETE FROM srpolygon WHERE ogr_fid = $1",
+      [id]
+    );
+
+    // Di Postgres (pg node), gunakan result.rowCount
+    if (result.rowCount === 0) {
+      return res.status(404).json({ message: "Polygon tidak ditemukan" });
+    }
+
+    res.json({ message: "Polygon berhasil dihapus" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "Gagal menghapus polygon" });
+  }
+});
+
 // === API CRUD untuk MARKER ===
 // 1. GET semua marker (Optimized with Database Casting)
 app.get('/api/marker', async (req, res) => {
