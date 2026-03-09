@@ -262,7 +262,7 @@ app.get('/api/polygon', async (req, res) => {
         -- 2. Ambil hanya array 'coordinates' agar payload lebih ramping
         ST_AsGeoJSON(ST_FlipCoordinates(shape))::json->'coordinates' AS geometry,
         ROUND(ST_Area(shape::geography)) AS luas_hitung 
-      FROM srpolygon
+      FROM gis_srpolygon
     `;
     const params = [];
 
@@ -307,7 +307,7 @@ app.post('/api/polygon/create', requireLogin, async (req, res) => {
 
     // Biarkan DB menghitung luas secara otomatis saat INSERT
     const sql = `
-      INSERT INTO srpolygon (shape, nosamw, nosambckup, lsval, luas) 
+      INSERT INTO gis_srpolygon (shape, nosamw, nosambckup, lsval, luas) 
       VALUES (
         ST_GeomFromText($1, 4326), 
         $2, 
@@ -347,7 +347,7 @@ app.put('/api/polygon/update/:id', requireLogin, async (req, res) => {
     const wkt = `POLYGON((${closed.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
 
     const sql = `
-      UPDATE srpolygon 
+      UPDATE gis_srpolygon 
       SET 
         shape = ST_GeomFromText($1, 4326), 
         nosamw = $2, 
@@ -375,7 +375,7 @@ app.delete('/api/polygon/delete/:id', requireLogin, async (req, res) => {
     
     // Gunakan dbPostgres agar konsisten dengan endpoint lainnya
     const result = await dbPostgres.query(
-      "DELETE FROM srpolygon WHERE ogr_fid = $1",
+      "DELETE FROM gis_srpolygon WHERE ogr_fid = $1",
       [id]
     );
 
