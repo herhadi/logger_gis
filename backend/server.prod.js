@@ -103,6 +103,15 @@ app.post('/api/logout', (req, res) => {
   }
 });
 
+// === GET Session (untuk cek apakah user sudah login) ===
+app.get('/api/session', (req, res) => {
+    if (req.session && req.session.user) {
+        res.json({ user: req.session.user });
+    } else {
+        res.status(401).json({ error: "Unauthorized" });
+    }
+});
+
 // Middleware autentikasi untuk proteksi API
 function requireLogin(req, res, next) {
   if (!req.session || !req.session.user) {
