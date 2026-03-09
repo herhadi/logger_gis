@@ -1037,7 +1037,7 @@ const MapManager = {
                 // 2. Filter & Balik urutan: [Lng, Lat] -> [Lat, Lng]
                 const validCoords = rawCoords
                     .filter(pt => pt.length === 2)
-                    .map(pt => [pt[1], pt[0]]);
+                .map(pt => [pt[1], pt[0]]);
 
                 if (validCoords.length < 2) return;
 
@@ -1066,7 +1066,7 @@ const MapManager = {
             console.error("⚠️ Gagal load pipa:", err);
         }
     },
-    
+
     async loadPolygon(bbox) {
         if (!this.layers.map || !this.state.layerVisibility.polygons) return;
         try {
@@ -1077,16 +1077,13 @@ const MapManager = {
             const data = await response.json();
 
             data.forEach(poly => {
-                // 1. Ambil array koordinat dari struktur GeoJSON yang dalam
-                const rawCoords = poly.geometry && poly.geometry.coordinates ? poly.geometry.coordinates[0] : [];
+                // BACKEND FIX: Sekarang data sudah berupa array koordinat [Lat, Lng]
+                // Kita hanya butuh indeks [0] karena GeoJSON Polygon membungkus ring dalam array
+                const validCoords = poly.geometry ? poly.geometry[0] : [];
 
-                // 2. Filter dan BALIK urutan dari [Lng, Lat] menjadi [Lat, Lng]
-                const validCoords = rawCoords
-                    .filter(pt => pt.length === 2)
-                    .map(pt => [pt[1], pt[0]]); // <--- Bagian krusial pembalik koordinat
-
+                // Cek minimal titik (Polygon butuh 3 titik untuk jadi bidang)
                 if (validCoords.length < 3) {
-                    console.warn("❌ Koordinat polygon tidak valid atau kurang dari 3 titik:", poly.id);
+                    console.warn("❌ Koordinat polygon tidak valid:", poly.id);
                     return;
                 }
 
@@ -1107,27 +1104,27 @@ const MapManager = {
                 polygon.bindPopup(() => {
                     const d = polygon.featureData;
                     return `
-                    <div class="p-2" style="min-width:250px">
-                        <div class="fw-bold mb-2 text-center">Edit Polygon</div>
-                        <div class="mb-2">
-                            <label class="form-label small mb-1">No SAMW</label>
-                            <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
-                        </div>
-                        <div class="mb-2">
-                            <label class="form-label small mb-1">Luas (m²)</label>
-                            <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.lsval || 0}" readonly>
-                        </div>
-                        <div class="d-flex gap-1 mt-3">
-                            <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
-                            <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
-                            <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
-                        </div>
-                    </div>`;
+                <div class="p-2" style="min-width:250px">
+                    <div class="fw-bold mb-2 text-center">Edit Polygon</div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">No SAMW</label>
+                        <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Luas (m²)</label>
+                        <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.luas_hitung || 0}" readonly>
+                    </div>
+                    <div class="d-flex gap-1 mt-3">
+                        <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
+                        <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
+                        <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
+                    </div>
+                </div>`;
                 }, { autoPan: false });
             });
 
             this.state.cachedPolygonData = data;
-            console.log(`✅ Polygon loaded & Lazy Popup applied: ${data.length}`);
+            console.log(`✅ Polygon loaded (Optimized): ${data.length}`);
         } catch (err) {
             console.error('Gagal load polygon:', err);
         }
@@ -1155,11 +1152,38 @@ const MapManager = {
 
                 const item = document.createElement('div');
                 item.innerHTML = `<span class="legend-line" style="background:${color}; height:6px;"></span> DN${dia}`;
+                // Fitur Tambahan: Klik legenda untuk filter pipa
+                item.onclick = () => this.filterPipaByDiameter(dia);
+
                 legendDiv.appendChild(item);
             });
         } catch (err) {
             console.error("Gagal load legend:", err);
         }
+    },
+
+    filterPipaByDiameter(diameter) {
+        // Jika diameter yang diklik sama dengan yang sedang aktif, reset filter (toggle off)
+        const isReset = this.state.activeFilter === diameter;
+        this.state.activeFilter = isReset ? null : diameter;
+
+        this.layers.pipeGroup.eachLayer(layer => {
+            const d = layer.featureData;
+
+            if (isReset) {
+                // Kembalikan ke normal
+                layer.setStyle({ opacity: 1, weight: 3, dashArray: null });
+            } else if (d.diameter == diameter) {
+                // Tonjolkan yang dipilih
+                layer.setStyle({ opacity: 1, weight: 6, dashArray: null });
+                layer.bringToFront();
+            } else {
+                // Samarkan yang lain
+                layer.setStyle({ opacity: 0.1, weight: 1, dashArray: '5, 5' });
+            }
+        });
+
+        console.log(isReset ? "🔄 Filter direset" : `🔍 Fokus ke DN${diameter}`);
     },
 
     // ===============================

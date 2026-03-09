@@ -333,6 +333,17 @@
   vertical-align: middle;
 }
 
+#legend div {
+    padding: 2px 5px;
+    transition: background 0.2s;
+    border-radius: 4px;
+}
+
+#legend div:hover {
+    background-color: #f0f0f0;
+    cursor: pointer;
+}
+
 .custom-marker-new {
     filter: drop-shadow(0 0 3px yellow);
 }

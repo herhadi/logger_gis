@@ -9,7 +9,7 @@ const fs = require('fs');
 
 // Gunakan node-fetch jika versi Node.js kamu di bawah 18, 
 // tapi di Railway (Node 18+) fetch sudah global.
-const fetch = global.fetch; 
+const fetch = global.fetch;
 
 // Kita hanya butuh dbPostgres sekarang
 const { dbPostgres } = require('./db');
@@ -25,13 +25,13 @@ app.use(express.json());
 // === KONFIGURASI SESSION POSTGRESQL ===
 app.use(session({
   store: new pgSession({
-    pool: dbPostgres,                
-    tableName: 'session',            
-    createTableIfMissing: false       
+    pool: dbPostgres,
+    tableName: 'session',
+    createTableIfMissing: false
   }),
   key: 'session_cookie',
   // Gunakan env variable, jika tidak ada baru pakai fallback
-  secret: process.env.SESSION_SECRET || 'rahasia-super-aman-sekali', 
+  secret: process.env.SESSION_SECRET || 'rahasia-super-aman-sekali',
   resave: false,
   saveUninitialized: false,
   cookie: {
@@ -56,7 +56,7 @@ app.post('/api/login', async (req, res) => {
 
     const user = rows[0];
     const valid = await bcrypt.compare(password, user.password);
-    
+
     if (!valid) {
       return res.status(401).json({ error: 'Password salah' });
     }
@@ -105,11 +105,11 @@ app.post('/api/logout', (req, res) => {
 
 // === GET Session (untuk cek apakah user sudah login) ===
 app.get('/api/session', (req, res) => {
-    if (req.session && req.session.user) {
-        res.json({ user: req.session.user });
-    } else {
-        res.status(401).json({ error: "Unauthorized" });
-    }
+  if (req.session && req.session.user) {
+    res.json({ user: req.session.user });
+  } else {
+    res.status(401).json({ error: "Unauthorized" });
+  }
 });
 
 // Middleware autentikasi untuk proteksi API
@@ -131,7 +131,9 @@ app.get('/api/pipa', async (req, res) => {
         panjang AS panjang_input,
         ROUND(ST_Length(shape::geography)) AS panjang_hitung, 
         keterangan, lokasi, status, diameter, roughness, zona,
-        ST_AsGeoJSON(shape)::json AS geometry
+        -- KITA BALIK DI SINI: PostGIS membalik Lng,Lat menjadi Lat,Lng
+        -- Lalu kita ambil langsung array 'coordinates'-nya saja
+        ST_AsGeoJSON(ST_FlipCoordinates(shape))::json->'coordinates' AS geometry
       FROM gis_pipa
     `;
     const params = [];
@@ -139,7 +141,8 @@ app.get('/api/pipa', async (req, res) => {
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
-        // PostGIS Envelope: West, South, East, North
+        // Urutan Leaflet bbox biasanya: [South, West, North, East]
+        // PostGIS ST_MakeEnvelope: (min_lng, min_lat, max_lng, max_lat, srid)
         const [south, west, north, east] = bbox;
         sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
         params.push(west, south, east, north);
@@ -148,7 +151,7 @@ app.get('/api/pipa', async (req, res) => {
 
     const { rows } = await dbPostgres.query(sql, params);
     res.json(rows);
-    
+
   } catch (err) {
     console.error('Error get pipa:', err);
     res.status(500).json({ error: 'Gagal mengambil data pipa' });
@@ -255,8 +258,10 @@ app.get('/api/polygon', async (req, res) => {
         luas AS luas_input, 
         lsval, 
         nosambckup,
-        ST_AsGeoJSON(shape)::json AS geometry,
-        ROUND(ST_Area(shape::geography)) AS luas_hitung -- Hasil presisi m2
+        -- 1. Balik koordinat (Lng,Lat -> Lat,Lng)
+        -- 2. Ambil hanya array 'coordinates' agar payload lebih ramping
+        ST_AsGeoJSON(ST_FlipCoordinates(shape))::json->'coordinates' AS geometry,
+        ROUND(ST_Area(shape::geography)) AS luas_hitung 
       FROM srpolygon
     `;
     const params = [];
@@ -264,8 +269,10 @@ app.get('/api/polygon', async (req, res) => {
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
+        // Urutan: South, West, North, East (Standard Leaflet BBOX)
         const [south, west, north, east] = bbox;
         sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        // Urutan Envelope: min_lng, min_lat, max_lng, max_lat
         params.push(west, south, east, north);
       }
     }
@@ -335,7 +342,7 @@ app.put('/api/polygon/update/:id', requireLogin, async (req, res) => {
 
     // Penutupan otomatis
     let closed = [...coords];
-    if (closed[0][0] !== closed[closed.length-1][0]) closed.push(closed[0]);
+    if (closed[0][0] !== closed[closed.length - 1][0]) closed.push(closed[0]);
 
     const wkt = `POLYGON((${closed.map(p => `${p[1]} ${p[0]}`).join(',')}))`;
 
@@ -419,7 +426,7 @@ app.post('/api/marker/create', requireLogin, async (req, res) => {
 
     // Validasi Input
     if (!coords || coords.length !== 2) return res.status(400).json({ error: 'Koordinat tidak valid' });
-    
+
     // Whitelist tabel untuk mencegah SQL Injection pada nama tabel
     const whitelist = {
       'acc': 'gis_acc',
@@ -458,7 +465,7 @@ app.put('/api/marker/update/:tipe/:id', requireLogin, async (req, res) => {
 
     const whitelist = { 'acc': 'gis_acc', 'reservoir': 'gis_reservoir', 'tank': 'gis_tank', 'valve': 'gis_valve' };
     const tableName = whitelist[tipe];
-    
+
     if (!tableName) return res.status(400).json({ error: 'Tipe tidak valid' });
     if (!coords || coords.length !== 2) return res.status(400).json({ error: 'Koordinat wajib [lat, lng]' });
 
@@ -554,7 +561,7 @@ app.post('/webhook', async (req, res) => {
         await kirimTelegram(target, "✅ Akses Anda telah aktif. Gunakan /start untuk mulai.");
         return res.sendStatus(200);
       }
-      
+
       // Broadcast Logic
       if (text.startsWith('/broadcast ')) {
         const pesanKonten = text.replace('/broadcast ', '').trim();
@@ -627,8 +634,8 @@ async function getStatusLogger() {
   });
 
   return `📊 *Status Logger*\n⏱ ${formatWaktu(now)}\n\n` +
-         (offline.length ? `⚠️ *OFFLINE*:\n${offline.join('\n')}\n\n` : `✅ Semua Online\n`) +
-         `🟢 *ONLINE*: ${onlineCount}`;
+    (offline.length ? `⚠️ *OFFLINE*:\n${offline.join('\n')}\n\n` : `✅ Semua Online\n`) +
+    `🟢 *ONLINE*: ${onlineCount}`;
 }
 
 async function cekLoggerDanNotif() {
