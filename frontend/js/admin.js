@@ -15,16 +15,28 @@ const MapManager = {
     layers: {
         map: null,
         editableLayers: new L.FeatureGroup(),
+
+        // --- MARKER LAYERS ---
+        // Gunakan MarkerCluster untuk grup utama (3.800+ data)
+        markerGroup: L.markerClusterGroup({
+            chunkedLoading: true,      // Menghindari browser "freeze" saat meload ribuan titik
+            disableClusteringAtZoom: 18, // Cluster pecah jadi titik biasa saat zoom dekat
+            maxClusterRadius: 50       // Jarak pixel antar titik untuk digabung
+        }),
+        markerGroupNew: L.layerGroup(), // Tetap LayerGroup biasa untuk marker yang sedang dibuat
         markerMap: {},
-        markerGroup: L.layerGroup(),
-        markerLayer: L.layerGroup(),
-        markerGroupNew: L.layerGroup(),
-        pipaLayers: {},
+
+        // --- PIPE LAYERS ---
         pipeGroup: L.layerGroup(),
         pipeGroupNew: L.layerGroup(),
+        pipaLayers: {},
+
+        // --- POLYGON LAYERS ---
         polygonGroup: L.layerGroup(),
         polygonGroupNew: L.layerGroup(),
-        geometryLayer: L.featureGroup(),
+
+        // --- UTILITY LAYERS ---
+        geometryLayer: L.featureGroup(), // Induk untuk pencarian/analisis area
         selectionLayer: L.featureGroup()
     },
 
@@ -938,12 +950,10 @@ const MapManager = {
     },
 
     async loadMarkers(bbox) {
-        if (!this.layers.map || !this.state.layerVisibility.markers) {
-            return;
-        }
+        if (!this.layers.map || !this.state.layerVisibility.markers) return;
 
         try {
-            this.layers.geometryLayer.clearLayers();
+            // Karena kita pakai MarkerCluster, clearLayers() di sini sudah benar
             this.layers.markerGroup.clearLayers();
 
             const res = await fetch(`/api/marker?bbox=${bbox}`);
@@ -952,8 +962,11 @@ const MapManager = {
 
             data.forEach(m => {
                 const { lat, lng } = this._getLatLng(m);
-                if (lat && lng) {
-                    const markerIcon = L.divIcon({
+                if (!lat || !lng) return;
+
+                // Inisialisasi marker
+                const marker = L.marker([lat, lng], {
+                    icon: L.divIcon({
                         className: "custom-marker",
                         html: `<div style="
                         width:10px;
@@ -962,98 +975,53 @@ const MapManager = {
                         background:${this.state.colorMap[m.tipe] || "gray"};
                         border:1px solid #fff;
                     "></div>`,
-                        iconSize: [10, 10],
-                    });
+                        iconSize: [10, 10]
+                    })
+                });
 
-                    const marker = L.marker([lat, lng], { icon: markerIcon })
-                        .bindPopup(`
-                        <div class="p-2" style="min-width:250px">
-                            <div class="fw-bold mb-2 text-center">Edit Marker</div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">Tipe</label>
-                                <select class="form-select form-select-sm" name="editTipe">
-                                    ${Object.keys(this.state.colorMap).map(tipe =>
-                            `<option value="${tipe}" ${tipe === m.tipe ? "selected" : ""}>${tipe.toUpperCase()}</option>`
-                        ).join("")}
-                                </select>
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">Elevasi</label>
-                                <input type="number" class="form-control form-select-sm" name="editElevation" value="${m.elevation || ''}">
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">Keterangan</label>
-                                <input type="text" class="form-control form-select-sm" name="editKeterangan" value="${m.keterangan || ''}">
-                            </div>
-                            <div class="d-flex gap-1 mt-3">
-                                <button class="btn btn-sm btn-success flex-fill btn-save" data-type="marker" data-id="${m.id}">💾 Simpan</button>
-                                <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="marker" data-id="${m.id}">✏️ Edit</button>
-                                <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="marker" data-id="${m.id}">❌ Batal</button>
-                                <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="marker" data-id="${m.id}">🗑️ Hapus</button>
-                            </div>
-                        </div>
-                    `);
+                // Simpan data mentah sebagai "source of truth" untuk popup
+                marker.featureData = m;
+                marker._markerId = m.id;
 
-                    // Simpan informasi marker
-                    marker._markerId = m.id;
-                    marker._originalTipe = m.tipe;
+                // Tambahkan ke Cluster Group
+                this.layers.markerGroup.addLayer(marker);
 
-                    this.layers.markerGroup.addLayer(marker);
-                    this.layers.geometryLayer.addLayer(marker);
-                }
+                // LAZY POPUP: HTML dibuat hanya saat marker diklik
+                marker.bindPopup(() => {
+                    const d = marker.featureData; // Mengambil data terbaru dari objek marker
+
+                    const tipeOptions = Object.keys(this.state.colorMap).map(t =>
+                        `<option value="${t}" ${t === d.tipe ? "selected" : ""}>${t.toUpperCase()}</option>`
+                    ).join("");
+
+                    return `
+                <div class="p-2" style="min-width:200px">
+                    <div class="fw-bold mb-2 text-center">Edit Marker Aset</div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Tipe Aset</label>
+                        <select class="form-select form-select-sm" name="editTipe">
+                            ${tipeOptions}
+                        </select>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Elevasi</label>
+                        <input type="number" class="form-control form-control-sm" name="editElevation" value="${d.elevation || ''}">
+                    </div>
+                    <div class="d-flex gap-1 mt-3">
+                        <button class="btn btn-sm btn-success flex-fill btn-save" 
+                                data-type="marker" data-id="${d.id}">💾 Simpan</button>
+                        <button class="btn btn-sm btn-danger flex-fill btn-hapus" 
+                                data-type="marker" data-id="${d.id}">🗑️ Hapus</button>
+                    </div>
+                </div>`;
+                });
             });
 
-            console.log(`✅ Point loaded: ${data.length}`);
+            console.log(`✅ ${data.length} Marker loaded into Cluster Group`);
         } catch (err) {
             console.error("⚠️ Gagal load markers:", err);
         }
     },
-
-    // async loadMarkers(bbox) {
-    //     if (!this.layers.map || !this.state.layerVisibility.markers) {
-    //         return; // Jangan load jika layer tidak visible
-    //     }
-
-    //     try {
-    //         this.layers.geometryLayer.clearLayers();
-    //         this.layers.markerGroup.clearLayers();
-
-    //         const res = await fetch(`/api/marker?bbox=${bbox}`);
-    //         if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    //         const data = await res.json();
-
-    //         data.forEach(m => {
-    //             const { lat, lng } = this._getLatLng(m);
-    //             if (lat && lng) {
-    //                 const markerIcon = L.divIcon({
-    //                     className: "custom-marker",
-    //                     html: `<div style="
-    //                         width:10px;
-    //                         height:10px;
-    //                         border-radius:50%;
-    //                         background:${this.state.colorMap[m.tipe] || "gray"};
-    //                         border:1px solid #fff;
-    //                     "></div>`,
-    //                     iconSize: [10, 10],
-    //                 });
-
-    //                 const marker = L.marker([lat, lng], { icon: markerIcon })
-    //                     .bindPopup(`
-    //                         <b>${m.tipe?.toUpperCase() || "-"}</b><br>
-    //                         ID: ${m.id || "-"}<br>
-    //                         Elev: ${m.elevation || "-"}
-    //                     `);
-
-    //                 this.layers.markerGroup.addLayer(marker);
-    //                 this.layers.geometryLayer.addLayer(marker);
-    //             }
-    //         });
-
-    //         console.log(`✅ Point loaded: ${data.length}`);
-    //     } catch (err) {
-    //         console.error("⚠️ Gagal load markers:", err);
-    //     }
-    // },
 
     async loadPipa(bbox) {
         if (!this.layers.map || !this.state.layerVisibility.pipes) return;
@@ -1487,59 +1455,51 @@ const MapManager = {
     },
 
     async _handleSaveMarker(id) {
-        console.log("➡️ _handleSaveMarker running with id:", id);
+        // 1. Cari marker (bisa di group 'baru' atau group 'utama')
+        let marker = this.layers.markerGroupNew.getLayers().find(m => m._markerId == id) ||
+            this._findMarkerById(id);
 
-        // Cari marker di markerGroupNew
-        let marker = this.layers.markerGroupNew.getLayers().find(m => m._markerId == id);
-        console.log("📍 Marker found:", marker);
+        if (!marker) return;
 
-        if (!marker) {
-            console.error("❌ No marker found for id:", id);
-            return;
-        }
-
+        // 2. Ambil DOM Popup yang sedang terbuka
         const popupEl = marker.getPopup()?.getElement();
-        if (!popupEl) {
-            console.error("❌ Popup element not found");
-            return;
-        }
+        if (!popupEl) return;
 
-        // Ambil nilai dari form popup
-        const tipe = popupEl.querySelector('#newMarkerTipe')?.value.trim().toLowerCase();
-        const elevasi = popupEl.querySelector('#newMarkerElevation')?.value || null;
-        const keterangan = popupEl.querySelector('#newMarkerKeterangan')?.value.trim() || null;
+        // 3. Ambil nilai (Gunakan querySelector yang lebih fleksibel)
+        const tipe = popupEl.querySelector('select[name="editTipe"], #newMarkerTipe')?.value;
+        const elevasi = popupEl.querySelector('input[name="editElevation"], #newMarkerElevation')?.value;
+        const keterangan = popupEl.querySelector('input[name="editKeterangan"], #newMarkerKeterangan')?.value;
 
-        // Validasi wajib
         if (!tipe) {
-            this.showToast("❌ Tipe marker wajib dipilih!", "danger");
+            this.showToast("❌ Tipe wajib diisi!", "danger");
             return;
         }
 
         const payload = {
             coords: [marker.getLatLng().lat, marker.getLatLng().lng],
-            tipe,
-            elevasi,
-            keterangan
+            tipe: tipe.toLowerCase(),
+            elevation: elevasi,
+            keterangan: keterangan
         };
 
         try {
             if (!id || id === "new") {
                 const saved = await this.saveMarker(payload);
-
-                // Update id marker setelah disimpan
                 marker._markerId = saved.ogr_fid;
 
-                // Pindahkan marker dari group "baru" ke group utama
+                // Pindahkan ke cluster group utama
                 this.layers.markerGroupNew.removeLayer(marker);
                 this.layers.markerGroup.addLayer(marker);
             } else {
                 await this.updateMarker(id, marker, payload);
             }
 
+            // PENTING: Update featureData agar saat popup dibuka lagi, datanya sudah yang terbaru
+            marker.featureData = { ...marker.featureData, ...payload };
+
             marker.closePopup();
-            this._showBootstrapToast("saveToast");
         } catch (err) {
-            console.error("Save Marker error:", err);
+            console.error("Gagal simpan:", err);
         }
     },
 
