@@ -171,20 +171,37 @@ const MapManager = {
     },
 
     _setupGeomanControls() {
+        // 1. Atur opsi global untuk Snapping (Magnet)
+        this.layers.map.pm.setGlobalOptions({
+            snappable: true,
+            snapDistance: 25,          // Perbesar jarak magnet (default 20, kita naikkan ke 25)
+            allowSelfIntersection: false,
+            templineStyle: { color: 'orange', dashArray: '5, 5' }, // Warna garis saat menggambar
+            hintlineStyle: { color: 'orange', dashArray: '5, 5' }, // Warna garis bantu kursor
+        });
+
+        // 2. Aktifkan Controls
         this.layers.map.pm.addControls({
             position: 'topleft',
-            drawCircle: false,
-            drawRectangle: false,
-            drawCircleMarker: false,
             drawMarker: true,
             drawPolyline: true,
             drawPolygon: true,
-            editMode: false,
+            drawCircle: false,
+            drawRectangle: false,
+            drawCircleMarker: false,
+            editMode: true,           // Aktifkan agar bisa edit titik setelah digambar
             dragMode: false,
             cutPolygon: false,
             rotateMode: false,
-            removalMode: false,
-            drawMarker: { cursorMarker: false }
+            removalMode: true,        // Tambahkan tombol hapus agar lebih fleksibel
+        });
+
+        // 3. Listener untuk mempermudah alur kerja
+        this.layers.map.on('pm:drawstart', ({ workingLayer }) => {
+            // Beri tahu user secara visual jika kursor menempel ke titik eksisting
+            workingLayer.on('pm:snap', (e) => {
+                console.log('🧲 Snapped ke:', e.shape);
+            });
         });
     },
 

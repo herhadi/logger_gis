@@ -161,34 +161,72 @@ app.get('/api/pipa', async (req, res) => {
 // CREATE pipa
 app.post('/api/pipa/create', requireLogin, async (req, res) => {
   try {
-    const { coords, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona } = req.body;
+    const { 
+      coords, dc_id, dia, jenis, panjang, keterangan, 
+      lokasi, status, diameter, roughness, zona 
+    } = req.body;
 
     if (!coords || !Array.isArray(coords) || coords.length < 2) {
       return res.status(400).json({ error: 'Data koordinat tidak valid (minimal 2 titik)' });
     }
 
-    // Pastikan koordinat bersih dan urutan benar (Lng Lat)
+    // --- 1. MEMBERSIHKAN DATA NUMERIC ---
+    // Fungsi ini membuang 'mm', 'm', atau spasi agar Postgres tidak error 22P02
+    const cleanNumber = (val) => {
+      if (val === undefined || val === null || val === "") return null;
+      // Hanya ambil angka, titik desimal, dan tanda minus
+      const num = parseFloat(val.toString().replace(/[^\d.-]/g, ''));
+      return isNaN(num) ? null : num;
+    };
+
+    // --- 2. FORMAT GEOMETRI (WKT) ---
     const validCoords = coords.filter(p => p && p.length === 2);
     const wkt = `LINESTRING(${validCoords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
 
+    // --- 3. QUERY SQL ---
     const sql = `
-      INSERT INTO gis_pipa (shape, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona)
-      VALUES (ST_GeomFromText($1, 4326), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+      INSERT INTO gis_pipa (
+        shape, dc_id, dia, jenis, panjang, 
+        keterangan, lokasi, status, diameter, roughness, zona
+      )
+      VALUES (
+        ST_GeomFromText($1, 4326), $2, $3, $4, $5, 
+        $6, $7, $8, $9, $10, $11
+      )
       RETURNING ogr_fid
     `;
 
-    const result = await dbPostgres.query(sql, [
-      wkt, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona
-    ]);
+    // Pastikan semua kolom numerik dilewatkan ke cleanNumber()
+    const values = [
+      wkt,
+      dc_id || null,
+      cleanNumber(dia),
+      jenis || null,
+      cleanNumber(panjang),
+      keterangan || null,
+      lokasi || null,
+      status || null,
+      cleanNumber(diameter),  // Solusi untuk error "300 mm"
+      cleanNumber(roughness),
+      zona || null
+    ];
+
+    const result = await dbPostgres.query(sql, values);
 
     res.json({
       ogr_fid: result.rows[0].ogr_fid,
       success: true,
       message: "Pipa berhasil disimpan"
     });
+
   } catch (err) {
-    console.error("Error create pipa:", err);
-    res.status(500).json({ error: "Gagal menyimpan pipa ke database" });
+    // Debugging lebih detail di log server
+    console.error("Error create pipa detail:", err.message);
+    
+    res.status(500).json({ 
+      error: "Gagal menyimpan pipa ke database",
+      detail: err.message // Membantu debug langsung di tab Network browser
+    });
   }
 });
 
