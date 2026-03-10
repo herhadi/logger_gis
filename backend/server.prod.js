@@ -6,6 +6,7 @@ const pgSession = require('connect-pg-simple')(session);
 const bcrypt = require('bcrypt');
 const cron = require('node-cron');
 const fs = require('fs');
+const isProduction = process.env.NODE_ENV === 'production';
 
 // Gunakan node-fetch jika versi Node.js kamu di bawah 18, 
 // tapi di Railway (Node 18+) fetch sudah global.
@@ -30,15 +31,18 @@ app.use(session({
     createTableIfMissing: false
   }),
   key: 'session_cookie',
-  // Gunakan env variable, jika tidak ada baru pakai fallback
   secret: process.env.SESSION_SECRET || 'rahasia-super-aman-sekali',
   resave: false,
   saveUninitialized: false,
   cookie: {
-    maxAge: 24 * 60 * 60 * 1000,      // 1 hari
-    secure: true,                     // Wajib true karena Railway pakai HTTPS
-    sameSite: 'none',                 // Penting untuk cross-site jika frontend & backend beda domain
-    httpOnly: true                    // Menghindari akses cookie dari Javascript client (lebih aman)
+    maxAge: 24 * 60 * 60 * 1000, // 1 hari
+    // DI LOKAL (HTTP): Wajib false agar cookie tersimpan
+    // DI RAILWAY (HTTPS): Wajib true agar aman
+    secure: isProduction,
+    // DI LOKAL: 'lax' sudah cukup
+    // DI RAILWAY: 'none' jika frontend & backend beda domain
+    sameSite: isProduction ? 'none' : 'lax',
+    httpOnly: true
   }
 }));
 
@@ -161,9 +165,9 @@ app.get('/api/pipa', async (req, res) => {
 // CREATE pipa
 app.post('/api/pipa/create', requireLogin, async (req, res) => {
   try {
-    const { 
-      coords, dc_id, dia, jenis, panjang, keterangan, 
-      lokasi, status, diameter, roughness, zona 
+    const {
+      coords, dc_id, dia, jenis, panjang, keterangan,
+      lokasi, status, diameter, roughness, zona
     } = req.body;
 
     if (!coords || !Array.isArray(coords) || coords.length < 2) {
@@ -222,8 +226,8 @@ app.post('/api/pipa/create', requireLogin, async (req, res) => {
   } catch (err) {
     // Debugging lebih detail di log server
     console.error("Error create pipa detail:", err.message);
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: "Gagal menyimpan pipa ke database",
       detail: err.message // Membantu debug langsung di tab Network browser
     });
@@ -236,11 +240,19 @@ app.put('/api/pipa/update/:id', requireLogin, async (req, res) => {
     const id = req.params.id;
     const { coords, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona } = req.body;
 
-    if (!coords || coords.length < 2) {
+    if (!coords || !Array.isArray(coords) || coords.length < 2) {
       return res.status(400).json({ error: 'Data koordinat tidak valid' });
     }
 
-    const wkt = `LINESTRING(${coords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
+    // Samakan dengan endpoint CREATE agar input seperti "300 mm" tidak bikin Postgres error 22P02.
+    const cleanNumber = (val) => {
+      if (val === undefined || val === null || val === "") return null;
+      const num = parseFloat(val.toString().replace(/[^\d.-]/g, ''));
+      return isNaN(num) ? null : num;
+    };
+
+    const validCoords = coords.filter(p => p && p.length === 2);
+    const wkt = `LINESTRING(${validCoords.map(([lat, lng]) => `${lng} ${lat}`).join(',')})`;
 
     const sql = `
       UPDATE gis_pipa 
@@ -250,7 +262,18 @@ app.put('/api/pipa/update/:id', requireLogin, async (req, res) => {
     `;
 
     const result = await dbPostgres.query(sql, [
-      wkt, dc_id, dia, jenis, panjang, keterangan, lokasi, status, diameter, roughness, zona, id
+      wkt,
+      dc_id || null,
+      cleanNumber(dia),
+      jenis || null,
+      cleanNumber(panjang),
+      keterangan || null,
+      lokasi || null,
+      status || null,
+      cleanNumber(diameter),
+      cleanNumber(roughness),
+      zona || null,
+      id
     ]);
 
     if (result.rowCount === 0) {
@@ -260,7 +283,7 @@ app.put('/api/pipa/update/:id', requireLogin, async (req, res) => {
     res.json({ success: true, message: "Pipa berhasil diperbarui" });
   } catch (err) {
     console.error("Error update pipa:", err);
-    res.status(500).json({ error: "Gagal memperbarui data pipa" });
+    res.status(500).json({ error: "Gagal memperbarui data pipa", detail: err.message });
   }
 });
 
@@ -367,9 +390,9 @@ app.post('/api/polygon/create', requireLogin, async (req, res) => {
     });
   } catch (err) {
     console.error('Error create polygon:', err.message); // Cetak pesan spesifik
-    res.status(500).json({ 
-        error: 'Database error saat menyimpan polygon',
-        detail: err.message // Kirim detail error ke browser
+    res.status(500).json({
+      error: 'Database error saat menyimpan polygon',
+      detail: err.message // Kirim detail error ke browser
     });
   }
 });
@@ -414,7 +437,7 @@ app.put('/api/polygon/update/:id', requireLogin, async (req, res) => {
 app.delete('/api/polygon/delete/:id', requireLogin, async (req, res) => {
   try {
     const { id } = req.params;
-    
+
     // Gunakan dbPostgres agar konsisten dengan endpoint lainnya
     const result = await dbPostgres.query(
       "DELETE FROM gis_srpolygon WHERE ogr_fid = $1",
@@ -758,7 +781,7 @@ app.get('/', (req, res) => {
 });
 
 // === START SERVER ===
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 4000;
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`🚀 Server running on port ${PORT}`);
 });

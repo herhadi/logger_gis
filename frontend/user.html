@@ -2,7 +2,7 @@
 <html>
 
 <head>
-  <title>Peta Lokasi Logger</title>
+  <title>Peta GIS</title>
 
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
@@ -15,7 +15,7 @@
 
 <body>
   <div class="d-flex justify-content-between align-items-center px-3 py-2 bg-light border-bottom">
-    <div><strong>Monitoring Lokasi Logger</strong></div>
+    <div><strong>Peta GIS</strong></div>
     <div class="d-flex align-items-center">
       <span id="user-info" class="me-3 text-primary small fw-bold"></span>
       <button class="btn btn-sm btn-outline-danger" onclick="logout()">Logout</button>
@@ -25,15 +25,8 @@
 
   <div id="map"></div>
 
-  <!-- Legend Jenis Pipa -->
+  <!-- Legend Diameter Pipa -->
   <div id="legend" class="legend">
-    <h4>Jenis Pipa</h4>
-    <div><span class="legend-line" style="background-color: #0077ff;"></span> DN300</div>
-    <div><span class="legend-line" style="background-color: #28a745;"></span> DN250</div>
-    <div><span class="legend-line" style="background-color: #dc3545;"></span> DN200</div>
-    <div><span class="legend-line" style="background-color: #ffc107;"></span> DN150</div>
-    <div><span class="legend-line" style="background-color: #6c757d;"></span> DN100</div>
-    <div><span class="legend-line" style="background-color: #ff6600;"></span> DN75</div>
   </div>
 
   <!-- Tombol Toggle Legend -->
@@ -80,7 +73,7 @@
         if (!res.ok) throw new Error('Gagal ambil info user');
 
         const data = await res.json();
-        document.getElementById('user-info').textContent = `👤 ${data.username}`;
+        document.getElementById('user-info').textContent = `👤 ${data.user?.username || ''}`;
       } catch (err) {
         document.getElementById('user-info').textContent = '👤 Guest';
       }
@@ -88,7 +81,7 @@
 
     // Logout
     async function logout() {
-      await fetch('/api/logout');
+      await fetch('/api/logout', { method: 'POST' });
       location.href = '/login.html';
     }
 

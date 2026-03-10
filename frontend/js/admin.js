@@ -67,6 +67,7 @@ const MapManager = {
         },
         polygonCount: 0,
         cachedPolygonData: [],
+        pipeEndpointIndex: new Map(),
         markerGroupNew: L.layerGroup()
     },
 
@@ -134,32 +135,38 @@ const MapManager = {
             zoom: this.config.defaultZoom,
             layers: [this.baseLayers["Citra Satelit"]],
             maxZoom: this.config.maxZoom,
-            preferCanvas: true,
-            renderer: L.canvas({ padding: 0.5 })
+            preferCanvas: true // Tetap aktif untuk performa marker/canvas
         });
 
-        // 1. BUAT PANE TERLEBIH DAHULU (Paling Bawah ke Paling Atas)
-        this.layers.map.createPane('polygonPane').style.zIndex = 400;
-        this.layers.map.createPane('pipaPane').style.zIndex = 450;
-        this.layers.map.createPane('markerPane').style.zIndex = 500;
+        // 1. PANE MANAGEMENT (Urutan tumpukan standar)
+        // Semakin tinggi angkanya, semakin di depan.
+        this.layers.map.createPane('polygonPane').style.zIndex = 400; // Paling bawah
+        this.layers.map.createPane('pipaPane').style.zIndex = 500;    // Di atas polygon
+        this.layers.map.createPane('markerPane').style.zIndex = 600;  // Paling atas
 
-        // 2. DAFTARKAN LAYER GROUP KE PETA
+        // Renderer (Hanya untuk poligon). Ikat renderer ke pane polygon agar event/DOM konsisten.
+        this.layers.polyCanvasRenderer = L.canvas({ padding: 0.5, pane: 'polygonPane' });
+        this.layers.svgRenderer = L.svg({ padding: 0.5, pane: 'polygonPane' });
+        // Renderer khusus pipa agar bisa switch Canvas/SVG tanpa saling menutupi event.
+        this.layers.pipaCanvasRenderer = L.canvas({ padding: 0.5, pane: 'pipaPane' });
+        this.layers.pipaSvgRenderer = L.svg({ padding: 0.5, pane: 'pipaPane' });
+
+        // 2. PEMISAHAN WADAH GEOMETRY (PENTING: Jangan disatukan lagi)
+        this.layers.pipeGeometry = L.layerGroup().addTo(this.layers.map);
+        this.layers.polyGeometry = L.layerGroup().addTo(this.layers.map);
+
+        // Layer pendukung
         this.layers.map.addLayer(this.layers.editableLayers);
-        this.layers.map.addLayer(this.layers.geometryLayer);
         this.layers.map.addLayer(this.layers.selectionLayer);
 
-        // Patch Visibility
+        // 3. DAFTARKAN LAYER GROUP
         if (this.state.layerVisibility.markers) this.layers.map.addLayer(this.layers.markerGroup);
         if (this.state.layerVisibility.pipes) this.layers.map.addLayer(this.layers.pipeGroup);
+        if (this.state.layerVisibility.polygons) this.layers.map.addLayer(this.layers.polygonGroup);
 
-        // Pastikan polygonGroup juga ditambahkan ke peta agar bisa muncul
-        if (this.state.layerVisibility.polygons) {
-            this.layers.map.addLayer(this.layers.polygonGroup);
-        }
-
+        // Patch untuk data baru
         if (this.state.layerVisibility.newPipes) this.layers.map.addLayer(this.layers.pipeGroupNew);
         if (this.state.layerVisibility.newPolygons) this.layers.map.addLayer(this.layers.polygonGroupNew);
-
         this.layers.map.addLayer(this.state.markerGroupNew);
     },
 
@@ -174,10 +181,10 @@ const MapManager = {
         // 1. Atur opsi global untuk Snapping (Magnet)
         this.layers.map.pm.setGlobalOptions({
             snappable: true,
-            snapDistance: 25,          // Perbesar jarak magnet (default 20, kita naikkan ke 25)
+            snapDistance: 25, // Naikkan sedikit lagi agar lebih "magnetis"
             allowSelfIntersection: false,
-            templineStyle: { color: 'orange', dashArray: '5, 5' }, // Warna garis saat menggambar
-            hintlineStyle: { color: 'orange', dashArray: '5, 5' }, // Warna garis bantu kursor
+            templineStyle: { color: 'orange', dashArray: '5, 5' },
+            hintlineStyle: { color: 'orange', dashArray: '5, 5' },
         });
 
         // 2. Aktifkan Controls
@@ -189,18 +196,43 @@ const MapManager = {
             drawCircle: false,
             drawRectangle: false,
             drawCircleMarker: false,
-            editMode: true,           // Aktifkan agar bisa edit titik setelah digambar
+            editMode: true,
             dragMode: false,
             cutPolygon: false,
             rotateMode: false,
-            removalMode: true,        // Tambahkan tombol hapus agar lebih fleksibel
+            removalMode: true,
         });
 
-        // 3. Listener untuk mempermudah alur kerja
-        this.layers.map.on('pm:drawstart', ({ workingLayer }) => {
-            // Beri tahu user secara visual jika kursor menempel ke titik eksisting
-            workingLayer.on('pm:snap', (e) => {
-                console.log('🧲 Snapped ke:', e.shape);
+        // 3. FIX: Buat Marker & Layer lain "Tembus Klik" saat menggambar
+        this.layers.map.on('pm:drawstart', (e) => {
+            this.layers.map.eachLayer((layer) => {
+                // Hanya buat "tembus" jika itu bukan layer yang sedang digambar
+                if ((layer instanceof L.Marker || layer instanceof L.Path) && layer !== e.workingLayer) {
+                    if (layer.getElement()) {
+                        layer.getElement().style.pointerEvents = 'none';
+                    }
+                }
+            });
+        });
+
+        // 4. FIX: Kembalikan interaksi setelah gambar selesai atau batal
+        this.layers.map.on('pm:drawend', () => {
+            this.layers.map.eachLayer((layer) => {
+                if (layer.getElement()) {
+                    layer.getElement().style.pointerEvents = 'auto'; // Kembalikan interaksi
+                }
+            });
+        });
+
+        // 5. FIX: Pastikan mode edit/hapus juga tidak mengganggu interaksi layer lain
+        this.layers.map.on('pm:globaleditmodetoggled pm:globalremovalmodetoggled', (e) => {
+            const enabled = e.enabled;
+            this.layers.map.eachLayer((layer) => {
+                if (layer.getElement()) {
+                    // Jika mode edit/hapus ON, pastikan bisa diklik (auto)
+                    // Jika OFF, biarkan default
+                    layer.getElement().style.pointerEvents = enabled ? 'auto' : 'auto';
+                }
             });
         });
     },
@@ -633,18 +665,6 @@ const MapManager = {
         `).openPopup();
     },
 
-    // _handleGlobalClick(e) {
-    //     const saveBtn = e.target.closest(".btn-save");
-    //     const editBtn = e.target.closest(".btn-edit");
-    //     const cancelBtn = e.target.closest(".btn-cancel");
-    //     const deleteBtn = e.target.closest(".btn-hapus");
-
-    //     if (saveBtn) this._handleSave(saveBtn);
-    //     if (editBtn) this._handleEdit(editBtn);
-    //     if (cancelBtn) this._handleCancel(cancelBtn);
-    //     if (deleteBtn) this._handleDelete(deleteBtn);
-    // },
-
     _handleGlobalClick(e) {
         const btn = e.target.closest("button");
         if (!btn) return;
@@ -893,6 +913,103 @@ const MapManager = {
         return { lat: null, lng: null };
     },
 
+    _cloneLatLngs(latlngs) {
+        // Deep-clone LatLng(s) so editing doesn't mutate the backup reference.
+        if (Array.isArray(latlngs)) return latlngs.map(x => this._cloneLatLngs(x));
+        if (latlngs && typeof latlngs.lat === 'number' && typeof latlngs.lng === 'number') {
+            return L.latLng(latlngs.lat, latlngs.lng);
+        }
+        return latlngs;
+    },
+
+    _normalizeDiameterValue(raw) {
+        const v = (raw || '').toString().trim();
+        if (!v) return '';
+        return /\bmm\b/i.test(v) ? v : `${v} mm`;
+    },
+
+    _latLngKey(latlng) {
+        // Round for stable endpoint matching.
+        if (!latlng) return '';
+        const lat = typeof latlng.lat === 'number' ? latlng.lat : latlng[0];
+        const lng = typeof latlng.lng === 'number' ? latlng.lng : latlng[1];
+        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return '';
+        return `${lat.toFixed(6)},${lng.toFixed(6)}`;
+    },
+
+    _unindexPipeLine(line) {
+        const idx = this.state.pipeEndpointIndex;
+        if (!idx || !line?._endpointKeys) return;
+        for (const k of [line._endpointKeys.start, line._endpointKeys.end]) {
+            if (!k) continue;
+            const set = idx.get(k);
+            if (!set) continue;
+            set.delete(line);
+            if (set.size === 0) idx.delete(k);
+        }
+        delete line._endpointKeys;
+    },
+
+    _indexPipeLine(line) {
+        const idx = this.state.pipeEndpointIndex;
+        if (!idx || !line || typeof line.getLatLngs !== 'function') return;
+        const latlngs = line.getLatLngs();
+        if (!Array.isArray(latlngs) || latlngs.length < 2) return;
+
+        const start = latlngs[0];
+        const end = latlngs[latlngs.length - 1];
+        const startKey = this._latLngKey(start);
+        const endKey = this._latLngKey(end);
+
+        line._endpointKeys = { start: startKey, end: endKey };
+
+        for (const k of [startKey, endKey]) {
+            if (!k) continue;
+            let set = idx.get(k);
+            if (!set) {
+                set = new Set();
+                idx.set(k, set);
+            }
+            set.add(line);
+        }
+    },
+
+    _getLinkedPipesForMarker(markerLatLng, toleranceMeters = 2) {
+        const key = this._latLngKey(markerLatLng);
+        const idx = this.state.pipeEndpointIndex;
+        const candidates = new Set();
+
+        const direct = idx?.get(key);
+        if (direct) direct.forEach(l => candidates.add(l));
+
+        // Fallback: if no exact match, scan endpoints within tolerance (handles rounding diffs).
+        if (candidates.size === 0) {
+            const scanGroups = [this.layers.pipeGroup, this.layers.pipeGroupNew];
+            for (const g of scanGroups) {
+                if (!g) continue;
+                g.eachLayer(line => {
+                    if (!line || typeof line.getLatLngs !== 'function') return;
+                    const ll = line.getLatLngs();
+                    if (!Array.isArray(ll) || ll.length < 2) return;
+                    const start = ll[0];
+                    const end = ll[ll.length - 1];
+                    if (start?.distanceTo && start.distanceTo(markerLatLng) <= toleranceMeters) candidates.add(line);
+                    else if (end?.distanceTo && end.distanceTo(markerLatLng) <= toleranceMeters) candidates.add(line);
+                });
+            }
+        }
+
+        return [...candidates];
+    },
+
+    _ensureMarkerDragging(marker) {
+        // Create dragging handler only when needed (avoid overhead for clustered markers).
+        if (!marker || marker.dragging) return;
+        if (L?.Handler?.MarkerDrag) {
+            marker.dragging = new L.Handler.MarkerDrag(marker);
+        }
+    },
+
     _findPolygonById(id) {
         let found = null;
 
@@ -1004,6 +1121,7 @@ const MapManager = {
                 // Simpan data mentah sebagai "source of truth" untuk popup
                 marker.featureData = m;
                 marker._markerId = m.id;
+                marker._originalTipe = m.tipe;
 
                 // Tambahkan ke Cluster Group
                 this.layers.markerGroup.addLayer(marker);
@@ -1017,11 +1135,11 @@ const MapManager = {
                     ).join("");
 
                     return `
-                <div class="p-2" style="min-width:200px">
+                <div class="p-2" style="min-width:250px">
                     <div class="fw-bold mb-2 text-center">Edit Marker Aset</div>
                     <div class="mb-2">
                         <label class="form-label small mb-1">Tipe Aset</label>
-                        <select class="form-select form-select-sm" name="editTipe">
+                        <select class="form-select form-select-sm" name="editTipe" disabled>
                             ${tipeOptions}
                         </select>
                     </div>
@@ -1029,11 +1147,19 @@ const MapManager = {
                         <label class="form-label small mb-1">Elevasi</label>
                         <input type="number" class="form-control form-control-sm" name="editElevation" value="${d.elevation || ''}">
                     </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Lokasi</label>
+                        <input type="text" class="form-control form-control-sm" name="editLokasi" value="${d.lokasi || ''}">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label small mb-1">Keterangan</label>
+                        <input type="text" class="form-control form-control-sm" name="editKeterangan" value="${d.keterangan || ''}">
+                    </div>
                     <div class="d-flex gap-1 mt-3">
-                        <button class="btn btn-sm btn-success flex-fill btn-save" 
-                                data-type="marker" data-id="${d.id}">💾 Simpan</button>
-                        <button class="btn btn-sm btn-danger flex-fill btn-hapus" 
-                                data-type="marker" data-id="${d.id}">🗑️ Hapus</button>
+                        <button class="btn btn-sm btn-success flex-fill btn-save" data-type="marker" data-id="${d.id}">💾 Simpan</button>
+                        <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="marker" data-id="${d.id}">✏️ Edit</button>
+                        <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="marker" data-id="${d.id}">❌ Batal</button>
+                        <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="marker" data-id="${d.id}">🗑️ Hapus</button>
                     </div>
                 </div>`;
                 });
@@ -1049,48 +1175,99 @@ const MapManager = {
         if (!this.layers.map || !this.state.layerVisibility.pipes) return;
 
         try {
+            const SVG_INTERACTIVE_ZOOM = 18;
+            const currentZoom = this.layers.map.getZoom();
+            const isSVGMode = currentZoom >= SVG_INTERACTIVE_ZOOM;
+
+            // Jika sebelumnya pernah render Canvas, canvas-nya bisa menutupi SVG polygon.
+            // Saat mode SVG, matikan pointer-events pada canvas pipa agar event bisa "tembus".
+            if (this.layers.pipaCanvasRenderer?._container) {
+                this.layers.pipaCanvasRenderer._container.style.pointerEvents = isSVGMode ? 'none' : 'auto';
+            }
+
             const res = await fetch(`/api/pipa?bbox=${bbox}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
 
             this.layers.pipeGroup.clearLayers();
+            this.layers.pipeGeometry.clearLayers();
+            this.state.pipeEndpointIndex = new Map();
 
             data.forEach(pipe => {
-                // 1. Backend baru langsung mengirim array koordinat di properti 'geometry'
                 const validCoords = pipe.geometry || [];
-
-                // 2. Tidak perlu .filter atau .map lagi karena sudah bersih dan urut dari SQL
-                if (validCoords.length < 2) {
-                    console.warn(`❌ Pipa ID ${pipe.id} tidak memiliki koordinat valid`);
-                    return;
-                }
+                if (validCoords.length < 2) return;
 
                 const color = this.state.diamtrColors[pipe.diameter] || "red";
+
+                // KEMBALI KE PENGATURAN STANDAR (Seperti Marker)
                 const line = L.polyline(validCoords, {
-                    color,
+                    color: color,
                     weight: 3,
-                    pane: "pipaPane"
+                    pane: "pipaPane",
+                    interactive: true,
+                    renderer: isSVGMode ? this.layers.pipaSvgRenderer : this.layers.pipaCanvasRenderer
                 }).addTo(this.layers.pipeGroup);
 
-                // Simpan data mentah untuk Lazy Popup & Filter
+                const el = line.getElement();
+                if (el) {
+                    el.style.pointerEvents = 'auto';
+                }
+
                 line.featureData = pipe;
                 line._pipeId = pipe.id;
 
-                this.layers.geometryLayer.addLayer(line);
+                this.layers.pipeGeometry.addLayer(line);
+                this._indexPipeLine(line);
+
+                // Tambahkan efek kursor agar sama seperti marker
+                line.on('mouseover', () => {
+                    this.layers.map.getContainer().style.cursor = 'pointer';
+                });
+                line.on('mouseout', () => {
+                    this.layers.map.getContainer().style.cursor = '';
+                });
 
                 line.bindPopup(() => {
                     const d = line.featureData;
+                    const diameterOptions = (this.state.diameterList || []).map(opt => {
+                        const norm = this._normalizeDiameterValue(opt);
+                        const selected = this._normalizeDiameterValue(d.diameter) === norm ? "selected" : "";
+                        return `<option value="${norm}" ${selected}>${norm}</option>`;
+                    }).join("");
+
+                    const jenisOptions = (this.state.jenisList || []).map(opt => {
+                        const selected = (d.jenis || '') === opt ? "selected" : "";
+                        return `<option value="${opt}" ${selected}>${opt}</option>`;
+                    }).join("");
+
                     return `
-            <div class="p-2">
-                <b>ID Pipa:</b> ${d.id}<br>
-                <b>DN:</b> ${d.diameter}<br>
-                <b>Jenis:</b> ${d.jenis || '-'}<br>
-                <b>Panjang:</b> ${d.panjang_hitung || 0} m
-            </div>`;
-                });
+                        <div class="p-2" style="min-width:250px">
+                            <div class="fw-bold mb-2 text-center">Edit Pipa</div>
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">Diameter</label>
+                                <select class="form-select form-select-sm" name="editDiameter">
+                                    <option value="">-- Pilih Diameter --</option>
+                                    ${diameterOptions}
+                                </select>
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">Jenis</label>
+                                <select class="form-select form-select-sm" name="editJenis">
+                                    <option value="">-- Pilih Jenis --</option>
+                                    ${jenisOptions}
+                                </select>
+                            </div>
+                            <div class="d-flex gap-1 mt-3">
+                                <button class="btn btn-sm btn-success flex-fill btn-save" data-type="pipe" data-id="${d.id}">💾 Simpan</button>
+                                <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="pipe" data-id="${d.id}">✏️ Edit</button>
+                                <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="pipe" data-id="${d.id}">❌ Batal</button>
+                                <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="pipe" data-id="${d.id}">🗑️ Hapus</button>
+                            </div>
+                        </div>`;
+                }, { autoPan: false });
             });
 
-            console.log(`✅ Pipa loaded & Fixed: ${data.length}`);
+            console.log(`✅ Pipa loaded (${isSVGMode ? 'SVG' : 'Canvas'}): ${data.length}`);
         } catch (err) {
             console.error("⚠️ Gagal load pipa:", err);
         }
@@ -1098,12 +1275,41 @@ const MapManager = {
 
     async loadPolygon(bbox) {
         if (!this.layers.map || !this.state.layerVisibility.polygons) return;
-        try {
+
+        const currentZoom = this.layers.map.getZoom();
+        const SVG_INTERACTIVE_ZOOM = 18;
+        const isSVGMode = currentZoom >= SVG_INTERACTIVE_ZOOM;
+
+        // Jika canvas polygon pernah dibuat, matikan pointer-events saat mode SVG agar tidak menutupi path SVG.
+        if (this.layers.polyCanvasRenderer?._container) {
+            this.layers.polyCanvasRenderer._container.style.pointerEvents = isSVGMode ? 'none' : 'auto';
+        }
+
+        // DEBUG 1: Cek Status Awal
+        console.log(`[DEBUG] 1. Zoom: ${currentZoom} | Mode: ${isSVGMode ? 'SVG' : 'Canvas'}`);
+        console.log(`[DEBUG] 2. svgRenderer Exist:`, !!this.layers.svgRenderer);
+
+        // Proteksi: Jika terlalu jauh, bersihkan peta agar RAM lega
+        if (currentZoom < 14) {
+            console.log("[DEBUG] Zoom < 14, Cleaning up...");
             this.layers.polygonGroup.clearLayers();
+            this.layers.geometryLayer.clearLayers(); // WAJIB: Hapus referensi agar RAM lega
+            return;
+        }
+
+        try {
+            console.log(`[DEBUG] 3. Fetching data for BBOX: ${bbox}`);
 
             const response = await fetch(`/api/polygon?bbox=${bbox}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
+
+            // DEBUG 2: Cek Data Masuk
+            console.log(`[DEBUG] 4. Data received: ${data.length} items`);
+
+            // Bersihkan layer lama
+            this.layers.polygonGroup.clearLayers();
+            this.layers.geometryLayer.clearLayers();
 
             data.forEach(poly => {
                 // BACKEND FIX: Sekarang data sudah berupa array koordinat [Lat, Lng]
@@ -1119,41 +1325,82 @@ const MapManager = {
                 const polygon = L.polygon(validCoords, {
                     color: 'blue',
                     weight: 1,
+                    fill: true,
                     fillOpacity: 0.4,
-                    pane: 'polygonPane'
+                    pane: 'polygonPane',
+                    // Untuk performa: polygon hanya interaktif saat mode SVG.
+                    interactive: isSVGMode,
+                    renderer: isSVGMode ? this.layers.svgRenderer : this.layers.polyCanvasRenderer
                 }).addTo(this.layers.polygonGroup);
+
+                if (isSVGMode) {
+                    // Proteksi tambahan khusus mode SVG agar pasti bisa diklik
+                    polygon.on('add', function () {
+                        const el = this.getElement();
+                        if (el) {
+                            el.style.pointerEvents = 'visiblePainted';
+                            el.style.cursor = 'pointer';
+                        }
+                    });
+
+                    // (Optional) Pastikan style diterapkan setelah element tersedia
+                    setTimeout(() => {
+                        const el = polygon.getElement();
+                        if (el) {
+                            console.log("[DEBUG] 7. Element ditemukan:", el);
+                            el.style.pointerEvents = 'visiblePainted';
+                            el.style.cursor = 'pointer';
+                        } else {
+                            console.warn("[DEBUG] 7. Element TIDAK ditemukan! Cek nama Pane di _setupMap.");
+                        }
+                    }, 100);
+                }
 
                 // Simpan data mentah agar Lazy Popup tetap jalan
                 polygon.featureData = poly;
                 polygon._polygonId = poly.id;
 
-                this.layers.geometryLayer.addLayer(polygon);
+                this.layers.polyGeometry.addLayer(polygon);
 
-                // LAZY POPUP
-                polygon.bindPopup(() => {
-                    const d = polygon.featureData;
-                    return `
-                <div class="p-2" style="min-width:250px">
-                    <div class="fw-bold mb-2 text-center">Edit Polygon</div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">No SAMW</label>
-                        <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">Luas (m²)</label>
-                        <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.luas_hitung || 0}" readonly>
-                    </div>
-                    <div class="d-flex gap-1 mt-3">
-                        <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
-                        <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
-                        <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
-                    </div>
-                </div>`;
-                }, { autoPan: false });
+                // Tambahkan hover effect manual agar kursor berubah di SVG Mode
+                if (isSVGMode) {
+                    polygon.on('mouseover', () => {
+                        this.layers.map.getContainer().style.cursor = 'pointer';
+                    });
+                    polygon.on('mouseout', () => {
+                        this.layers.map.getContainer().style.cursor = '';
+                    });
+
+                    // Bind Popup hanya di mode SVG
+                    // LAZY POPUP
+                    polygon.bindPopup(() => {
+                        const d = polygon.featureData;
+                        return `
+                        <div class="p-2" style="min-width:250px">
+                            <div class="fw-bold mb-2 text-center">Edit Polygon</div>
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">No SAMW</label>
+                                <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
+                            </div>
+                            <div class="mb-2">
+                                <label class="form-label small mb-1">Luas (m²)</label>
+                                <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.luas_hitung || 0}" readonly>
+                            </div>
+                            <div class="d-flex gap-1 mt-3">
+                                <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
+                                <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
+                                <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
+                            </div>
+                        </div>`;
+                    }, { autoPan: false });
+                }
             });
 
             this.state.cachedPolygonData = data;
-            console.log(`✅ Polygon loaded (Optimized): ${data.length}`);
+            if (!isSVGMode) {
+                console.log(`[INFO] Polygon non-interaktif di Canvas (zoom < ${SVG_INTERACTIVE_ZOOM}). Zoom in untuk bisa klik polygon.`);
+            }
+            console.log(`✅ Polygon loaded (${isSVGMode ? 'SVG' : 'Canvas'}): ${data.length}`);
         } catch (err) {
             console.error('Gagal load polygon:', err);
         }
@@ -1269,24 +1516,31 @@ const MapManager = {
         const latlng = marker.getLatLng();
 
         try {
-            const payload = {
+            const tipe = (marker.featureData?.tipe || marker._originalTipe || payload?.tipe || '').toString();
+            const dataToSend = {
                 coords: [latlng.lat, latlng.lng],
-                tipe: payload.tipe || null,
-                elevation: payload.elevation || null,
-                keterangan: payload.keterangan || null
+                dc_id: payload.dc_id || null,
+                keterangan: payload.keterangan ?? marker.featureData?.keterangan ?? null,
+                zona: payload.zona || null,
+                lokasi: payload.lokasi ?? marker.featureData?.lokasi ?? null,
+                elevation: payload.elevation ?? marker.featureData?.elevation ?? null
             };
 
-            const res = await fetch(`/api/marker/update/${id}`, {
+            const res = await fetch(`/api/marker/update/${encodeURIComponent(tipe)}/${id}`, {
                 method: "PUT",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload)
+                body: JSON.stringify(dataToSend)
             });
 
             const data = await res.json();
             if (!res.ok) throw new Error(data.error || "Gagal update marker");
 
             this.showToast("Marker berhasil diperbarui", "success");
-            this.loadMarkers();
+            if (this.layers.map) {
+                const b = this.layers.map.getBounds();
+                const bbox1 = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
+                this.loadMarkers(bbox1);
+            }
         } catch (err) {
             this.showToast("Gagal update marker: " + err.message, "danger");
         }
@@ -1373,16 +1627,16 @@ const MapManager = {
             const coords = layer.getLatLngs().map(latlng => [latlng.lat, latlng.lng]);
             const payload = {
                 coords,
-                dc_id: formData.dc_id || null,
-                dia: formData.dia || null,
-                jenis: formData.jenis || null,
-                panjang: formData.panjang || null,
-                keterangan: formData.keterangan || null,
-                lokasi: formData.lokasi || null,
-                status: formData.status || null,
-                diameter: formData.diameter || null,
-                roughness: formData.roughness || null,
-                zona: formData.zona || null
+                dc_id: formData.dc_id ?? layer.featureData?.dc_id ?? null,
+                dia: formData.dia ?? layer.featureData?.dia ?? null,
+                jenis: formData.jenis ?? layer.featureData?.jenis ?? null,
+                panjang: formData.panjang ?? layer.featureData?.panjang_input ?? null,
+                keterangan: formData.keterangan ?? layer.featureData?.keterangan ?? null,
+                lokasi: formData.lokasi ?? layer.featureData?.lokasi ?? null,
+                status: formData.status ?? layer.featureData?.status ?? null,
+                diameter: formData.diameter ?? layer.featureData?.diameter ?? null,
+                roughness: formData.roughness ?? layer.featureData?.roughness ?? null,
+                zona: formData.zona ?? layer.featureData?.zona ?? null
             };
 
             const res = await fetch(`/api/pipa/update/${id}`, {
@@ -1395,6 +1649,8 @@ const MapManager = {
             if (!res.ok) throw new Error(data.error || "Gagal update pipa");
 
             this.showToast("Pipa berhasil diperbarui", "success");
+            // Keep local featureData consistent (prevents wiping on next edits).
+            layer.featureData = { ...(layer.featureData || {}), ...payload };
             this.loadPipa();
         } catch (err) {
             this.showToast("Gagal update pipa: " + err.message, "danger");
@@ -1510,7 +1766,8 @@ const MapManager = {
 
         // 3. Ambil nilai (Gunakan querySelector yang lebih fleksibel)
         const tipe = popupEl.querySelector('select[name="editTipe"], #newMarkerTipe')?.value;
-        const elevasi = popupEl.querySelector('input[name="editElevation"], #newMarkerElevation')?.value;
+        const elevasiRaw = popupEl.querySelector('input[name="editElevation"], #newMarkerElevation')?.value;
+        const lokasi = popupEl.querySelector('input[name="editLokasi"]')?.value;
         const keterangan = popupEl.querySelector('input[name="editKeterangan"], #newMarkerKeterangan')?.value;
 
         if (!tipe) {
@@ -1518,11 +1775,16 @@ const MapManager = {
             return;
         }
 
+        const elevation = elevasiRaw === "" || elevasiRaw === undefined || elevasiRaw === null
+            ? null
+            : (Number.isFinite(Number(elevasiRaw)) ? Number(elevasiRaw) : null);
+
         const payload = {
             coords: [marker.getLatLng().lat, marker.getLatLng().lng],
             tipe: tipe.toLowerCase(),
-            elevation: elevasi,
-            keterangan: keterangan
+            elevation,
+            lokasi: lokasi ?? marker.featureData?.lokasi ?? null,
+            keterangan: keterangan ?? marker.featureData?.keterangan ?? null
         };
 
         try {
@@ -1540,7 +1802,31 @@ const MapManager = {
             // PENTING: Update featureData agar saat popup dibuka lagi, datanya sudah yang terbaru
             marker.featureData = { ...marker.featureData, ...payload };
 
+            this._ensureMarkerDragging(marker);
+            if (marker.dragging) marker.dragging.disable();
             marker.closePopup();
+
+            // Persist pipes whose endpoints follow this marker (best-effort).
+            if (marker._linkedPipes && marker._linkedPipes.length) {
+                const uniq = new Map();
+                for (const link of marker._linkedPipes) {
+                    if (link?.line?._pipeId) uniq.set(String(link.line._pipeId), link.line);
+                }
+                for (const line of uniq.values()) {
+                    await this.updatePipa(line._pipeId, line, {
+                        dc_id: line.featureData?.dc_id,
+                        dia: line.featureData?.dia,
+                        jenis: line.featureData?.jenis,
+                        panjang: line.featureData?.panjang_input,
+                        keterangan: line.featureData?.keterangan,
+                        lokasi: line.featureData?.lokasi,
+                        status: line.featureData?.status,
+                        diameter: line.featureData?.diameter,
+                        roughness: line.featureData?.roughness,
+                        zona: line.featureData?.zona
+                    });
+                }
+            }
         } catch (err) {
             console.error("Gagal simpan:", err);
         }
@@ -1582,11 +1868,13 @@ const MapManager = {
 
         if (!line) return;
 
-        // ✅ CEK TITIK AWAL
-        const startLatLng = line.getLatLngs()[0];
-        if (!this._hasMarkerAt(startLatLng)) {
-            this.showToast("❌ Pipa harus dimulai dari point (marker)!", "danger");
-            return; // hentikan simpan
+        // ✅ CEK TITIK AWAL (hanya untuk pipa baru)
+        if (!id || id === "new") {
+            const startLatLng = line.getLatLngs()[0];
+            if (!this._hasMarkerAt(startLatLng)) {
+                this.showToast("❌ Pipa harus dimulai dari point (marker)!", "danger");
+                return; // hentikan simpan
+            }
         }
 
         const popupEl = line.getPopup().getElement();
@@ -1595,7 +1883,7 @@ const MapManager = {
         let jenisInput = popupEl.querySelector('[name="editJenis"]')?.value ||
             popupEl.querySelector('#newPipeJenis')?.value || '';
 
-        const diameterToSave = diameterInput ? diameterInput.trim() + ' mm' : '';
+        const diameterToSave = this._normalizeDiameterValue(diameterInput);
 
         try {
             if (!id || id === "new") {
@@ -1637,8 +1925,78 @@ const MapManager = {
 
         if (!layer) return;
 
-        layer._backupLatLng = layer.getLatLng();
-        if (layer.pm) layer.pm.enable();
+        if (layer instanceof L.Marker) {
+            layer._backupLatLng = layer.getLatLng();
+            this._ensureMarkerDragging(layer);
+            if (layer.dragging) layer.dragging.enable();
+
+            if (!layer._pipeFollowBound) {
+                layer._pipeFollowBound = true;
+
+                layer.on('dragstart', () => {
+                    const startLatLng = layer.getLatLng();
+                    const linked = this._getLinkedPipesForMarker(startLatLng);
+                    const moved = [];
+
+                    for (const line of linked) {
+                        if (!line || typeof line.getLatLngs !== 'function') continue;
+                        const ll = line.getLatLngs();
+                        if (!Array.isArray(ll) || ll.length < 2) continue;
+
+                        const s = ll[0];
+                        const e = ll[ll.length - 1];
+                        const ds = s?.distanceTo ? s.distanceTo(startLatLng) : Infinity;
+                        const de = e?.distanceTo ? e.distanceTo(startLatLng) : Infinity;
+                        const endpoint = ds <= de ? 'start' : 'end';
+
+                        moved.push({
+                            line,
+                            endpoint,
+                            original: endpoint === 'start' ? L.latLng(s.lat, s.lng) : L.latLng(e.lat, e.lng)
+                        });
+                    }
+
+                    layer._linkedPipes = moved;
+                });
+
+                layer.on('drag', () => {
+                    const newLatLng = layer.getLatLng();
+                    const moved = layer._linkedPipes || [];
+                    for (const link of moved) {
+                        const line = link.line;
+                        if (!line || typeof line.getLatLngs !== 'function') continue;
+                        const ll = line.getLatLngs();
+                        if (!Array.isArray(ll) || ll.length < 2) continue;
+
+                        // Update endpoint
+                        if (link.endpoint === 'start') ll[0] = newLatLng;
+                        else ll[ll.length - 1] = newLatLng;
+                        line.setLatLngs(ll);
+
+                        // Keep endpoint index in sync
+                        const oldKey = line._endpointKeys?.[link.endpoint];
+                        const newKey = this._latLngKey(newLatLng);
+                        if (oldKey && oldKey !== newKey) {
+                            const set = this.state.pipeEndpointIndex.get(oldKey);
+                            if (set) {
+                                set.delete(line);
+                                if (set.size === 0) this.state.pipeEndpointIndex.delete(oldKey);
+                            }
+                            let next = this.state.pipeEndpointIndex.get(newKey);
+                            if (!next) {
+                                next = new Set();
+                                this.state.pipeEndpointIndex.set(newKey, next);
+                            }
+                            next.add(line);
+                            if (line._endpointKeys) line._endpointKeys[link.endpoint] = newKey;
+                        }
+                    }
+                });
+            }
+        } else if (typeof layer.getLatLngs === 'function') {
+            layer._backupLatLngs = this._cloneLatLngs(layer.getLatLngs());
+        }
+        if (!(layer instanceof L.Marker) && layer.pm) layer.pm.enable();
 
         // Set style edit untuk marker
         if (type === "marker") {
@@ -1657,7 +2015,7 @@ const MapManager = {
             layer.setIcon(editIcon);
         }
 
-        layer.closePopup();
+        // Biarkan popup tetap terbuka supaya tombol Save/Cancel tetap bisa diakses setelah enable edit/drag.
     },
 
     _handleCancel(button) {
@@ -1683,6 +2041,8 @@ const MapManager = {
             else if (type === "marker") this.state.markerGroupNew.removeLayer(layer); // Tambahkan ini
         } else {
             if (layer.pm) layer.pm.disable();
+            this._ensureMarkerDragging(layer);
+            if (layer.dragging) layer.dragging.disable();
             layer.closePopup();
 
             // Kembalikan style normal untuk marker
@@ -1704,6 +2064,42 @@ const MapManager = {
             if (layer._backupLatLng) {
                 layer.setLatLng(layer._backupLatLng);
                 delete layer._backupLatLng;
+            }
+            if (type === "marker" && layer._linkedPipes && layer._linkedPipes.length) {
+                // Restore linked pipe endpoints to original when canceling marker move.
+                for (const link of layer._linkedPipes) {
+                    const line = link.line;
+                    if (!line || typeof line.getLatLngs !== 'function') continue;
+                    const ll = line.getLatLngs();
+                    if (!Array.isArray(ll) || ll.length < 2) continue;
+
+                    const oldKey = line._endpointKeys?.[link.endpoint];
+                    const restoreKey = this._latLngKey(link.original);
+
+                    if (link.endpoint === 'start') ll[0] = link.original;
+                    else ll[ll.length - 1] = link.original;
+                    line.setLatLngs(ll);
+
+                    if (oldKey && oldKey !== restoreKey) {
+                        const set = this.state.pipeEndpointIndex.get(oldKey);
+                        if (set) {
+                            set.delete(line);
+                            if (set.size === 0) this.state.pipeEndpointIndex.delete(oldKey);
+                        }
+                        let next = this.state.pipeEndpointIndex.get(restoreKey);
+                        if (!next) {
+                            next = new Set();
+                            this.state.pipeEndpointIndex.set(restoreKey, next);
+                        }
+                        next.add(line);
+                        if (line._endpointKeys) line._endpointKeys[link.endpoint] = restoreKey;
+                    }
+                }
+                layer._linkedPipes = [];
+            }
+            if (layer._backupLatLngs && typeof layer.setLatLngs === 'function') {
+                layer.setLatLngs(layer._backupLatLngs);
+                delete layer._backupLatLngs;
             }
         }
     },

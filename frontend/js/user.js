@@ -1,411 +1,413 @@
-// ✅ Fallback aman: inisialisasi L.Symbol jika plugin belum inject
-if (typeof L.Symbol === 'undefined') {
-    L.Symbol = {};
-}
+// Read-only map for user view (markers/pipes/polygons).
+// Keeps the same rendering strategy as admin.js, without edit/create controls.
 
-// Inisialisasi peta dengan maxZoom lebih besar
-const map = L.map('map', {
-    maxZoom: 24
-}).setView([-6.9383, 109.7178], 13);
+const UserMap = {
+    config: {
+        mapCenter: [-6.9383, 109.7178],
+        defaultZoom: 13,
+        maxZoom: 24,
+        debounceDelay: 300,
+        svgInteractiveZoom: 18
+    },
 
-const streetLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; OpenStreetMap contributors',
-    maxZoom: 23,
-    maxNativeZoom: 19
-}).addTo(map);
+    layers: {
+        map: null,
+        markerGroup: null,
+        pipeGroup: L.layerGroup(),
+        polygonGroup: L.layerGroup(),
+        pipeGeometry: null,
+        polyGeometry: null,
+        polyCanvasRenderer: null,
+        polySvgRenderer: null,
+        pipaCanvasRenderer: null,
+        pipaSvgRenderer: null
+    },
 
-const satelliteLayer = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, i-cubed, USDA, USGS, AEX, GeoEye, Getmapping, Aerogrid, IGN, IGP, UPR-EGP, and the GIS User Community',
-    maxZoom: 21,
-    maxNativeZoom: 19, // ❗️Batas asli citra satelit
-    noWrap: true        // ❗️Mencegah tile looping ke baris selanjutnya
-});
+    state: {
+        layerVisibility: {
+            markers: true,
+            pipes: true,
+            polygons: false
+        },
+        diamtrColors: {},
+        diameterList: [],
+        jenisList: []
+    },
 
-const jalanLayer = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    opacity: 0.4,
-    attribution: '&copy; OpenStreetMap contributors (Jalan Transparan)',
-    maxZoom: 21
-});
+    init() {
+        this._setupBaseLayers();
+        this._setupMap();
+        this._setupLayerControl();
+        this._setupEventHandlers();
+        this.loadLegend();
 
-const googleStreets = L.tileLayer('http://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
-    maxZoom: 22,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-});
+        this.layers.map.whenReady(() => {
+            this.loadAllLayers();
+        });
+    },
 
-const googleHybrid = L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
-    maxZoom: 24,
-    maxNativeZoom: 22,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-    attribution: 'Map data © Google'
-});
+    _setupBaseLayers() {
+        // Base layers (match admin.js options where possible)
+        this.baseLayers = {
+            "OpenStreetMap": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                attribution: '&copy; OpenStreetMap',
+                maxZoom: 23,
+                maxNativeZoom: 19
+            }),
+            "Citra Satelit": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+                attribution: 'Tiles &copy; Esri',
+                maxZoom: 23,
+                maxNativeZoom: 19,
+                noWrap: true
+            }),
+            "Google Hybrid": L.tileLayer('http://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', {
+                maxZoom: 23,
+                subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+                attribution: '&copy; Google Hybrid'
+            })
+        };
+    },
 
-const googleSat = L.tileLayer('http://{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}', {
-    maxZoom: 20,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-});
+    _setupMap() {
+        this.layers.map = L.map('map', {
+            center: this.config.mapCenter,
+            zoom: this.config.defaultZoom,
+            layers: [this.baseLayers["Citra Satelit"]],
+            maxZoom: this.config.maxZoom,
+            preferCanvas: true
+        });
 
-const googleTerrain = L.tileLayer('http://{s}.google.com/vt/lyrs=p&x={x}&y={y}&z={z}', {
-    maxZoom: 20,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
-});
+        // Panes (zIndex order)
+        this.layers.map.createPane('polygonPane').style.zIndex = 400;
+        this.layers.map.createPane('pipaPane').style.zIndex = 500;
+        this.layers.map.createPane('markerPane').style.zIndex = 600;
 
-const googleTraffic = L.tileLayer('https://{s}.google.com/vt/lyrs=m@221097413,traffic&x={x}&y={y}&z={z}', {
-    maxZoom: 20,
-    minZoom: 2,
-    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
-});
+        // Renderers bound to panes (prevents event issues when mixing SVG/Canvas)
+        this.layers.polyCanvasRenderer = L.canvas({ padding: 0.5, pane: 'polygonPane' });
+        this.layers.polySvgRenderer = L.svg({ padding: 0.5, pane: 'polygonPane' });
+        this.layers.pipaCanvasRenderer = L.canvas({ padding: 0.5, pane: 'pipaPane' });
+        this.layers.pipaSvgRenderer = L.svg({ padding: 0.5, pane: 'pipaPane' });
 
-// Layer hybrid: gabungan satelit dan jalan transparan
-const hybridLayer = L.layerGroup([satelliteLayer, jalanLayer]);
+        // Clustered markers for performance
+        this.layers.markerGroup = L.markerClusterGroup({
+            chunkedLoading: true,
+            disableClusteringAtZoom: 18,
+            maxClusterRadius: 50
+        });
 
-const baseMaps = {
-    "Peta Biasa": streetLayer,
-    "Citra Satelit": satelliteLayer,
-    "gHybrid": googleHybrid,
-    "gTerrain": googleTerrain,
-    "gStreets": googleStreets,
-    "gSat": googleSat,
-    "gTraffic": googleTraffic,
-    "Hybrid (Satelit + Jalan)": hybridLayer
-};
+        // Separate geometry holders (mirrors admin.js)
+        this.layers.pipeGeometry = L.layerGroup().addTo(this.layers.map);
+        this.layers.polyGeometry = L.layerGroup().addTo(this.layers.map);
 
-const markerGroup = L.layerGroup();
-const statusDotGroup = L.layerGroup();
-const overlayMaps = {
-    "Tampilkan Marker": markerGroup,
-    "Status Logger": statusDotGroup
-};
+        if (this.state.layerVisibility.markers) this.layers.map.addLayer(this.layers.markerGroup);
+        if (this.state.layerVisibility.pipes) this.layers.map.addLayer(this.layers.pipeGroup);
+        if (this.state.layerVisibility.polygons) this.layers.map.addLayer(this.layers.polygonGroup);
+    },
 
-L.control.layers(baseMaps, overlayMaps).addTo(map);
+    _setupLayerControl() {
+        const overlays = {
+            "Tampilkan Marker": this.layers.markerGroup,
+            "Tampilkan Pipa": this.layers.pipeGroup,
+            "Tampilkan Polygon": this.layers.polygonGroup
+        };
 
-// Secara default aktif? Tambahkan ke map di sini (jika perlu)
-markerGroup.addTo(map);
-statusDotGroup.addTo(map);
+        this.layerControl = L.control.layers(this.baseLayers, overlays, { collapsed: true }).addTo(this.layers.map);
+    },
 
-const markerMap = {};
-const allMarkers = [];
+    _setupEventHandlers() {
+        this.layers.map.on("moveend", this.debounce(() => {
+            this.loadAllLayers();
+        }, this.config.debounceDelay));
 
-function closeAllPopups() {
-    document.querySelectorAll('.leaflet-popup').forEach(p => p.remove());
-}
+        this.layers.map.on('overlayadd overlayremove', (e) => {
+            if (e.layer === this.layers.markerGroup) this.state.layerVisibility.markers = e.type === 'overlayadd';
+            if (e.layer === this.layers.pipeGroup) this.state.layerVisibility.pipes = e.type === 'overlayadd';
+            if (e.layer === this.layers.polygonGroup) this.state.layerVisibility.polygons = e.type === 'overlayadd';
+            this.loadAllLayers();
+        });
+    },
 
-function formatPixelDistance(p1, p2) {
-    const dx = p1.x - p2.x;
-    const dy = p1.y - p2.y;
-    return Math.sqrt(dx * dx + dy * dy);
-}
+    debounce(func, wait) {
+        let timeout;
+        return (...args) => {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    },
 
-function isOverlappingMarkers(minDistance = 80) {
-    const pixels = allMarkers.map(m => map.latLngToContainerPoint(m.getLatLng()));
-    for (let i = 0; i < pixels.length; i++) {
-        for (let j = i + 1; j < pixels.length; j++) {
-            if (formatPixelDistance(pixels[i], pixels[j]) < minDistance) return true;
-        }
-    }
-    return false;
-}
+    _getLatLng(m) {
+        if (m.coords && m.coords.length === 2) return { lat: parseFloat(m.coords[0]), lng: parseFloat(m.coords[1]) };
+        if (m.y && m.x) return { lat: parseFloat(m.y), lng: parseFloat(m.x) };
+        return { lat: null, lng: null };
+    },
 
-function updateSensorData(autoPopup = false) {
-    if (autoPopup) closeAllPopups();
+    async loadAllLayers() {
+        if (!this.layers.map) return;
 
-    return fetch('/api/data-terbaru')
-        .then(res => res.json())
-        .then(data => {
-            const now = new Date();
-            const idmetWithData = new Set(data.map(d => d.idmet));
+        const bounds = this.layers.map.getBounds();
+        if (!bounds.isValid()) return;
 
-            Object.entries(markerMap).forEach(([idmet, entry]) => {
-                let content = '';
-                let statusDot = '';
+        // markers: West, South, East, North
+        const bboxMarkers = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()].join(",");
+        // pipa/polygon: South, West, North, East (admin.js convention)
+        const bboxSWNE = [bounds.getSouth(), bounds.getWest(), bounds.getNorth(), bounds.getEast()].join(",");
 
-                if (entry.status == 0) {
-                    statusDot = `<span class="status-dot gray-dot"></span>`;
-                    content = `
-                        ${statusDot}<b>${entry.nama}</b><br>ID: ${idmet}
-                        <br><span class="badge bg-secondary">Logger belum terpasang</span>
-                    `;
-                } else if (idmetWithData.has(idmet)) {
-                    const sensor = data.find(d => d.idmet === idmet);
-                    const waktu = new Date(sensor.jam);
-                    const selisihJam = (now - waktu) / (1000 * 60 * 60);
+        const jobs = [];
+        if (this.state.layerVisibility.markers) jobs.push(this.loadMarkers(bboxMarkers));
+        if (this.state.layerVisibility.pipes) jobs.push(this.loadPipa(bboxSWNE));
+        if (this.state.layerVisibility.polygons) jobs.push(this.loadPolygon(bboxSWNE));
 
-                    let warnaClass = selisihJam <= 1 ? 'green-dot' : 'red-dot';
-                    statusDot = `<span class="status-dot ${warnaClass} blinking"></span>`;
+        await Promise.all(jobs);
+    },
 
-                    // Foto logger langsung dari entry.foto_logger, tidak lewat api/foto-logger/:idmet
-                    const fotoLogger = entry.foto_logger
-                        ? `/foto_logger/${encodeURIComponent(entry.foto_logger)}`
-                        : `/foto_logger/default.png`;
+    async loadMarkers(bbox) {
+        try {
+            this.layers.markerGroup.clearLayers();
 
-                    const { lat, lng } = entry.marker.getLatLng();
+            const res = await fetch(`/api/marker?bbox=${bbox}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
 
-                    content = `
-                        <img src="${fotoLogger}" 
-                            alt="Foto Logger" 
-                            style="width:100%; max-height:150px; object-fit:cover; border-radius:8px; margin-bottom:5px;"
-                            onerror="this.onerror=null; this.src='/foto_logger/default.png';"><br>
-                        ${statusDot}<b>${entry.nama}</b><br>ID: ${idmet}
-                        <br><b>Waktu:</b> ${formatWaktu(sensor.jam)}
-                        <br><b>Stand:</b> ${sensor.stand}
-                        <br><b>Debit:</b> ${parseFloat(sensor.debit).toFixed(2)} L/s
-                        <br><b>Tekanan:</b> ${parseFloat(sensor.pressure).toFixed(2)} Bar
-                        <br><div style="text-align:center; margin-top:8px;">
-                                <button id="lokasiBtn-${idmet}" onclick="bukaRute(${lat}, ${lng}, '${idmet}')" 
-                                    style="width:100%; background:#2196F3; color:#fff; border:none; padding:8px; border-radius:5px; cursor:pointer; font-size:14px;"">
-                                    📍 Lokasi
+            data.forEach(m => {
+                const { lat, lng } = this._getLatLng(m);
+                if (!lat || !lng) return;
+
+                const marker = L.marker([lat, lng], {
+                    icon: L.divIcon({
+                        className: "custom-marker",
+                        html: `<div style="
+                            width:10px;
+                            height:10px;
+                            border-radius:50%;
+                            background:${this._markerColor(m.tipe)};
+                            border:1px solid #fff;
+                        "></div>`,
+                        iconSize: [10, 10]
+                    }),
+                    pane: 'markerPane'
+                });
+
+                marker.featureData = m;
+                marker._markerId = m.id;
+
+                marker.bindPopup(() => {
+                    const d = marker.featureData;
+                    const ll = marker.getLatLng();
+                    return `
+                        <div class="p-2" style="min-width:220px">
+                            <div class="fw-bold mb-2 text-center">Info Marker</div>
+                            <div><b>ID:</b> ${d.id}</div>
+                            <div><b>Tipe:</b> ${(d.tipe || '').toUpperCase()}</div>
+                            <div><b>Elevasi:</b> ${d.elevation ?? '-'}</div>
+                            <div><b>Lokasi:</b> ${d.lokasi ?? '-'}</div>
+                            <div><b>Keterangan:</b> ${d.keterangan ?? '-'}</div>
+                            <div class="mt-2" style="text-align:center;">
+                                <button id="lokasiBtn-${d.id}" onclick="bukaRute(${ll.lat}, ${ll.lng}, '${d.id}')" class="btn btn-sm btn-primary" style="width:100%;">
+                                    Lokasi
                                 </button>
                             </div>
-                    `;
-                } else {
-                    statusDot = `<span class="status-dot yellow-dot blinking"></span>`;
-                    content = `
-                        ${statusDot}<b>${entry.nama}</b><br>ID: ${idmet}
-                        <br><i>Data belum tersedia</i>
-                    `;
-                }
+                        </div>`;
+                }, { autoPan: false });
 
-                entry.marker.bindPopup(content, {
-                    offset: L.point(0, -35)
-                });
-
-                const dotIcon = L.divIcon({
-                    className: '',
-                    html: statusDot,
-                    iconSize: [14, 14],
-                    iconAnchor: [7, 7]
-                });
-
-                if (entry.statusDot) {
-                    entry.statusDot.setLatLng(entry.marker.getLatLng());
-                    entry.statusDot.setIcon(dotIcon);
-                } else {
-                    entry.statusDot = L.marker(entry.marker.getLatLng(), {
-                        icon: dotIcon,
-                        interactive: false
-                    }).addTo(statusDotGroup);
-                }
-
-                if (autoPopup && map.getZoom() >= 17 && !isOverlappingMarkers() && !entry.popupShown) {
-                    const popup = L.popup({
-                        autoClose: false,
-                        closeOnClick: false,
-                        closeButton: false,
-                        autoPan: false,
-                        offset: L.point(0, -35)
-                    })
-                        .setLatLng(entry.marker.getLatLng())
-                        .setContent(content)
-                        .addTo(map);
-
-                    if (entry.statusDot && entry.statusDot.getElement()) {
-                        entry.statusDot.getElement().style.display = 'none';
-                    }
-
-                    entry.currentPopup = popup;
-                    entry.popupShown = true;
-
-                    console.log("Opening popup [zoom≥17] for:", idmet);
-                }
+                this.layers.markerGroup.addLayer(marker);
             });
-        })
-        .catch(err => console.error("Gagal fetch data sensor:", err));
-}
+        } catch (err) {
+            console.error("Gagal load markers:", err);
+        }
+    },
 
-function initMap() {
-    markerGroup.clearLayers();
-    statusDotGroup.clearLayers();
+    _markerColor(tipe) {
+        const map = {
+            acc: "orange",
+            reservoir: "blue",
+            tank: "green",
+            valve: "red"
+        };
+        return map[tipe] || "gray";
+    },
 
-    const clusterGroup = L.markerClusterGroup({
-        spiderfyOnMaxZoom: true,
-        showCoverageOnHover: false,
-        maxClusterRadius: 40
-    }); // Tambahkan cluster
+    async loadPipa(bbox) {
+        try {
+            const currentZoom = this.layers.map.getZoom();
+            const isSVGMode = currentZoom >= this.config.svgInteractiveZoom;
 
-    fetch('/api/lokasi')
-        .then(res => res.json())
-        .then(data => {
-            data.forEach(loc => {
-                const { latitude, longitude, nama, idmet, ikon, status, foto_logger } = loc;
-
-                const icon = L.icon({
-                    iconUrl: `/icons/${ikon || 'default.png'}`,
-                    iconSize: [25, 41],
-                    iconAnchor: [12, 41]
-                });
-
-                const marker = L.marker([latitude, longitude], { icon, riseOnHover: true, autoPan: true });
-                clusterGroup.addLayer(marker);
-
-                marker.bindPopup(`<b>${nama}</b><br>ID: ${idmet}<br><i>Memuat data...</i>`);
-
-                markerMap[idmet] = {
-                    marker,
-                    nama,
-                    foto_logger: foto_logger || null,
-                    status
-                };
-
-                marker.on('popupopen', () => {
-                    const entry = markerMap[idmet];
-                    if (entry.currentPopup) {
-                        entry.currentPopup.remove();
-                        entry.currentPopup = null;
-                    }
-                    if (entry.statusDot) {
-                        map.removeLayer(entry.statusDot);
-                    }
-                });
-
-                marker.on('popupclose', () => {
-                    if (markerMap[idmet].statusDot) {
-                        map.addLayer(markerMap[idmet].statusDot);
-                    }
-                });
-
-                allMarkers.push(marker);
-            });
-
-            map.addLayer(clusterGroup); // Masukkan cluster ke map
-
-
-            if (allMarkers.length > 0) {
-                map.fitBounds(L.featureGroup(allMarkers).getBounds().pad(0.2));
+            // If a canvas renderer exists, it can cover SVG polygons. Disable events in SVG mode.
+            if (this.layers.pipaCanvasRenderer?._container) {
+                this.layers.pipaCanvasRenderer._container.style.pointerEvents = isSVGMode ? 'none' : 'auto';
             }
 
-            setTimeout(() => updateSensorData(false), 500);
-        })
-        .then(() => fetch('/api/pipa'))
-        .then(res => res.json())
-        .then(pipaData => {
-            pipaData.forEach(p => {
-                const jalur = p.arah === 'reverse'
-                    ? [...p.jalur].reverse().map(([lng, lat]) => [lat, lng])
-                    : p.jalur.map(([lng, lat]) => [lat, lng]);
+            const res = await fetch(`/api/pipa?bbox=${bbox}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
 
-                const line = L.polyline(jalur, {
-                    color: p.warna || 'blue',
+            this.layers.pipeGroup.clearLayers();
+            this.layers.pipeGeometry.clearLayers();
+
+            data.forEach(pipe => {
+                const coords = pipe.geometry || [];
+                if (!Array.isArray(coords) || coords.length < 2) return;
+
+                const color = this.state.diamtrColors[pipe.diameter] || "red";
+                const line = L.polyline(coords, {
+                    color,
                     weight: 3,
-                    className: 'jalur-pipa',
-                    dashArray: '3 5'
-                }).addTo(map);
+                    pane: "pipaPane",
+                    interactive: true,
+                    renderer: isSVGMode ? this.layers.pipaSvgRenderer : this.layers.pipaCanvasRenderer
+                }).addTo(this.layers.pipeGroup);
 
-                let offset = 0;
-                setInterval(() => {
-                    offset = (offset + 1) % 7;
-                    line.setStyle({ dashOffset: `${offset}` });
-                }, 150);
+                line.featureData = pipe;
+                line._pipeId = pipe.id;
+                this.layers.pipeGeometry.addLayer(line);
 
-                // Ambil panjang dari kolom p.panjang
-                const panjang = Number(p.panjang);
-                const panjangText = panjang >= 1000
-                    ? (panjang / 1000).toFixed(2) + ' km'
-                    : panjang.toFixed(0) + ' m';
-
-                // Bind popup dengan nama dan panjang pipa
-                const popupContent = `
-                    <div style="font-size: 16px; line-height: 1.4; max-width: 300px;">
-                        <strong>${p.nama}</strong><br>
-                        Panjang: ${panjangText}
-                    </div>
-                `;
-
-                line.bindPopup(popupContent, {
-                    maxWidth: 320,
-                    minWidth: 220,
-                    autoPanPadding: [20, 20]
+                line.on('mouseover', () => {
+                    this.layers.map.getContainer().style.cursor = 'pointer';
                 });
+                line.on('mouseout', () => {
+                    this.layers.map.getContainer().style.cursor = '';
+                });
+
+                line.bindPopup(() => {
+                    const d = line.featureData;
+                    return `
+                        <div class="p-2" style="min-width:220px">
+                            <div class="fw-bold mb-2 text-center">Info Pipa</div>
+                            <div><b>ID:</b> ${d.id}</div>
+                            <div><b>Diameter:</b> ${d.diameter ?? '-'}</div>
+                            <div><b>Jenis:</b> ${d.jenis ?? '-'}</div>
+                            <div><b>Panjang:</b> ${d.panjang_hitung ?? d.panjang_input ?? '-'} m</div>
+                            <div><b>Lokasi:</b> ${d.lokasi ?? '-'}</div>
+                            <div><b>Keterangan:</b> ${d.keterangan ?? '-'}</div>
+                        </div>`;
+                }, { autoPan: false });
             });
-        })
-        .catch(err => console.error("Inisialisasi gagal:", err));
-}
+        } catch (err) {
+            console.error("Gagal load pipa:", err);
+        }
+    },
 
-initMap();
+    async loadPolygon(bbox) {
+        try {
+            const currentZoom = this.layers.map.getZoom();
+            const isSVGMode = currentZoom >= this.config.svgInteractiveZoom;
 
-map.on('zoomstart', closeAllPopups);
-map.on('zoomend', () => {
-    const zoom = map.getZoom();
-    console.log("zoomend triggered, zoom =", zoom);
-
-    if (zoom < 17) {
-        Object.values(markerMap).forEach(entry => {
-            if (entry.statusDot && entry.statusDot.getElement()) {
-                entry.statusDot.getElement().style.display = '';
+            // For performance: polygons are only interactive in SVG mode.
+            if (this.layers.polyCanvasRenderer?._container) {
+                this.layers.polyCanvasRenderer._container.style.pointerEvents = isSVGMode ? 'none' : 'auto';
             }
-            if (entry.currentPopup) {
-                entry.currentPopup.remove();
-                entry.currentPopup = null;
-            }
-            entry.popupShown = false;
-        });
-    } else {
-        // Reset agar popup bisa muncul ulang di zoom > 17
-        Object.values(markerMap).forEach(entry => {
-            entry.popupShown = false;
-        });
-        if (!isOverlappingMarkers()) {
-            updateSensorData(true);
+
+            const res = await fetch(`/api/polygon?bbox=${bbox}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+
+            this.layers.polygonGroup.clearLayers();
+            this.layers.polyGeometry.clearLayers();
+
+            data.forEach(poly => {
+                const ring = poly.geometry ? poly.geometry[0] : [];
+                if (!Array.isArray(ring) || ring.length < 3) return;
+
+                const polygon = L.polygon(ring, {
+                    color: 'blue',
+                    weight: 1,
+                    fill: true,
+                    fillOpacity: 0.4,
+                    pane: 'polygonPane',
+                    interactive: isSVGMode,
+                    renderer: isSVGMode ? this.layers.polySvgRenderer : this.layers.polyCanvasRenderer
+                }).addTo(this.layers.polygonGroup);
+
+                polygon.featureData = poly;
+                polygon._polygonId = poly.id;
+                this.layers.polyGeometry.addLayer(polygon);
+
+                if (isSVGMode) {
+                    polygon.on('add', function () {
+                        const el = this.getElement();
+                        if (el) el.style.pointerEvents = 'visiblePainted';
+                    });
+                    polygon.on('mouseover', () => {
+                        this.layers.map.getContainer().style.cursor = 'pointer';
+                    });
+                    polygon.on('mouseout', () => {
+                        this.layers.map.getContainer().style.cursor = '';
+                    });
+
+                    polygon.bindPopup(() => {
+                        const d = polygon.featureData;
+                        return `
+                            <div class="p-2" style="min-width:220px">
+                                <div class="fw-bold mb-2 text-center">Info Polygon</div>
+                                <div><b>ID:</b> ${d.id}</div>
+                                <div><b>No SAMW:</b> ${d.nosamw ?? '-'}</div>
+                                <div><b>Luas:</b> ${d.luas_hitung ?? '-'} m²</div>
+                            </div>`;
+                    }, { autoPan: false });
+                }
+            });
+        } catch (err) {
+            console.error("Gagal load polygon:", err);
+        }
+    },
+
+    async loadLegend() {
+        try {
+            const res = await fetch('/api/pipa/option');
+            if (!res.ok) return;
+            const data = await res.json();
+
+            this.state.diameterList = data.diameter || [];
+            this.state.jenisList = data.jenis || [];
+
+            // Same palette as admin.js (stable, readable)
+            const colorPalette = [
+                '#0077ff', '#28a745', '#dc3545', '#ffc107',
+                '#6c757d', '#ff6600', '#00ccff', '#8e44ad',
+                '#00aa00', '#fd7e14', '#e83e8c'
+            ];
+
+            const legendDiv = document.getElementById('legend');
+            if (!legendDiv) return;
+            legendDiv.innerHTML = '<h4>Diameter Pipa</h4>';
+
+            this.state.diameterList.forEach((dia, i) => {
+                const color = i < colorPalette.length ? colorPalette[i] : `hsl(${(i * 40) % 360}, 70%, 50%)`;
+                this.state.diamtrColors[dia] = color;
+
+                const item = document.createElement('div');
+                item.innerHTML = `<span class="legend-line" style="background:${color}; height:6px;"></span> ${dia}`;
+                legendDiv.appendChild(item);
+            });
+        } catch (err) {
+            console.error("Gagal load legend:", err);
         }
     }
+};
+
+window.addEventListener('DOMContentLoaded', () => {
+    UserMap.init();
 });
 
-
-map.on('popupclose', function (e) {
-    Object.values(markerMap).forEach(entry => {
-        if (entry.currentPopup === e.popup) {
-            if (entry.statusDot && entry.statusDot.getElement()) {
-                entry.statusDot.getElement().style.display = '';
-            }
-            entry.currentPopup = null;
-            entry.popupShown = false;
-        }
-    });
-});
-
-// Tampilkan info user login
-fetch('/api/session')
-    .then(res => {
-        if (!res.ok) throw new Error('Belum login');
-        return res.json();
-    })
-    .then(data => {
-        const userEl = document.getElementById('user-info');
-        userEl.textContent = `Login sebagai: 👤 ${data.user.username}`;
-    })
-    .catch(() => {
-        alert("Anda belum login. Akan dialihkan...");
-        window.location.href = "/login.html";
-    });
-
-// Fungsi logout
-function logout() {
-    fetch('/api/logout', { method: 'POST' })
-        .then(() => {
-            alert("Berhasil logout.");
-            window.location.href = "/login.html";
-        })
-        .catch(() => alert("Gagal logout."));
-}
-
-function bukaRute(lat, lng, idmet) {
-    if (!lat || !lng) {
+// Open external maps app (Google Maps in a new tab).
+window.bukaRute = function bukaRute(lat, lng, id) {
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
         alert("Koordinat tujuan tidak ditemukan.");
         return;
     }
 
-    // Ganti warna tombol + teks sementara
-    const btn = document.getElementById(`lokasiBtn-${idmet}`);
+    const btn = document.getElementById(`lokasiBtn-${id}`);
     if (btn) {
-        btn.style.background = "#4CAF50";
+        btn.disabled = true;
         btn.textContent = "Membuka...";
     }
 
-    // Buka Google Maps
     const url = `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`;
     window.open(url, '_blank');
-}
 
-setInterval(() => {
-    console.log("Auto-refresh data sensor");
-    updateSensorData();
-}, 300000); // satuan dalam milidetik (5 menit)
-
+    if (btn) {
+        setTimeout(() => {
+            btn.disabled = false;
+            btn.textContent = "Lokasi";
+        }, 1000);
+    }
+};
