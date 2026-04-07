@@ -12,3 +12,7 @@ node_modules/
 
 # Folder logs
 npm-debug.log*
+
+seedAdmin.js
+seedUser.js
+upload/

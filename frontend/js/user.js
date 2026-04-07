@@ -74,7 +74,8 @@ const UserMap = {
             zoom: this.config.defaultZoom,
             layers: [this.baseLayers["Citra Satelit"]],
             maxZoom: this.config.maxZoom,
-            preferCanvas: true
+            preferCanvas: true,
+            closePopupOnClick: false
         });
 
         // Panes (zIndex order)
@@ -207,7 +208,7 @@ const UserMap = {
                                 </button>
                             </div>
                         </div>`;
-                }, { autoPan: false });
+                }, { autoPan: true, closeOnClick: false });
 
                 this.layers.markerGroup.addLayer(marker);
             });
@@ -279,7 +280,7 @@ const UserMap = {
                             <div><b>Lokasi:</b> ${d.lokasi ?? '-'}</div>
                             <div><b>Keterangan:</b> ${d.keterangan ?? '-'}</div>
                         </div>`;
-                }, { autoPan: false });
+                }, { autoPan: true, closeOnClick: false });
             });
         } catch (err) {
             console.error("Gagal load pipa:", err);
@@ -342,7 +343,7 @@ const UserMap = {
                                 <div><b>No SAMW:</b> ${d.nosamw ?? '-'}</div>
                                 <div><b>Luas:</b> ${d.luas_hitung ?? '-'} m²</div>
                             </div>`;
-                    }, { autoPan: false });
+                    }, { autoPan: true, closeOnClick: false });
                 }
             });
         } catch (err) {

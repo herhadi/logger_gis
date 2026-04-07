@@ -68,6 +68,7 @@ const MapManager = {
         polygonCount: 0,
         cachedPolygonData: [],
         pipeEndpointIndex: new Map(),
+        suppressMoveReloadUntil: 0,
         markerGroupNew: L.layerGroup()
     },
 
@@ -135,7 +136,8 @@ const MapManager = {
             zoom: this.config.defaultZoom,
             layers: [this.baseLayers["Citra Satelit"]],
             maxZoom: this.config.maxZoom,
-            preferCanvas: true // Tetap aktif untuk performa marker/canvas
+            preferCanvas: true, // Tetap aktif untuk performa marker/canvas
+            closePopupOnClick: false
         });
 
         // 1. PANE MANAGEMENT (Urutan tumpukan standar)
@@ -465,12 +467,20 @@ const MapManager = {
         this.layers.map.on('pm:create', (e) => this._handlePmCreate(e));
 
         this.layers.map.on("moveend", this.debounce(() => {
+            if (Date.now() < this.state.suppressMoveReloadUntil) return;
             this.loadAllLayers();
         }, this.config.debounceDelay));
 
         // ✅ FIX: Add layer control event handlers
         this.layers.map.on('overlayadd overlayremove', (e) => {
             this._handleOverlayChange(e);
+        });
+
+        this.layers.map.on('popupopen', (e) => {
+            // Avoid immediate reload/clear when popup auto-pans the map.
+            if (e.popup?.options?.autoPan) {
+                this.state.suppressMoveReloadUntil = Date.now() + 800;
+            }
         });
 
         document.addEventListener("click", (e) => this._handleGlobalClick(e));
@@ -498,7 +508,7 @@ const MapManager = {
 
         L.marker(geocode.center)
             .addTo(this.layers.map)
-            .bindPopup(`<b>${geocode.name}</b>`)
+            .bindPopup(`<b>${geocode.name}</b>`, { autoPan: true, closeOnClick: false })
             .openPopup();
     },
 
@@ -513,7 +523,7 @@ const MapManager = {
         const ha = (area / 10000).toFixed(2);
         const anchor = latlngs[0];
 
-        layer.bindPopup(`<b>Luas:</b> ${ha} ha<br>${resultHtml}`);
+        layer.bindPopup(`<b>Luas:</b> ${ha} ha<br>${resultHtml}`, { autoPan: true, closeOnClick: false });
 
         setTimeout(() => layer.openPopup(anchor), 0);
     },
@@ -526,8 +536,8 @@ const MapManager = {
             const ha = (area / 10000).toFixed(2);
             const firstLatLng = latlngs[0];
 
-            layer.bindPopup(`<b>Luas:</b> ${ha} ha<br>${resultHtml}`)
-                .openPopup(firstLatLng);
+        layer.bindPopup(`<b>Luas:</b> ${ha} ha<br>${resultHtml}`, { autoPan: true, closeOnClick: false })
+            .openPopup(firstLatLng);
         });
     },
 
@@ -595,7 +605,7 @@ const MapManager = {
             </div>
             <div class="alert alert-danger mt-2 small" id="markerError" style="display:none; font-size:11px"></div>
         </div>
-    `).openPopup();
+    `, { autoPan: true, closeOnClick: false }).openPopup();
     },
 
     _handleNewPipeCreation(line) {
@@ -631,7 +641,7 @@ const MapManager = {
                 </div>
                 <div class="alert alert-danger mt-2 small" id="pipeError" style="display:none; font-size:11px"></div>
             </div>
-        `).openPopup();
+        `, { autoPan: true, closeOnClick: false }).openPopup();
     },
 
     _handleNewPolygonCreation(polygon) {
@@ -662,7 +672,7 @@ const MapManager = {
                 </div>
                 <div class="alert alert-danger mt-2 small" id="polygonError" style="display:none; font-size:11px"></div>
             </div>
-        `).openPopup();
+        `, { autoPan: true, closeOnClick: false }).openPopup();
     },
 
     _handleGlobalClick(e) {
@@ -1010,6 +1020,39 @@ const MapManager = {
         }
     },
 
+    _setMarkerEditingVisual(marker, isEditing) {
+        const apply = () => {
+            const el = marker?.getElement?.();
+            if (!el) return false;
+            if (isEditing) {
+                L.DomUtil.addClass(el, 'marker-editing');
+            } else {
+                L.DomUtil.removeClass(el, 'marker-editing');
+            }
+            return true;
+        };
+        if (!apply()) setTimeout(apply, 0);
+    },
+
+    _setPolygonEditingVisual(polygon, isEditing) {
+        if (!polygon) return;
+        if (isEditing) {
+            polygon._backupStyle = polygon._backupStyle || {
+                color: polygon.options?.color,
+                dashArray: polygon.options?.dashArray || null,
+                fillOpacity: polygon.options?.fillOpacity
+            };
+            polygon.setStyle({ color: "orange", dashArray: "5,5", fillOpacity: 0.3 });
+        } else if (polygon._backupStyle) {
+            polygon.setStyle({
+                color: polygon._backupStyle.color || "blue",
+                dashArray: polygon._backupStyle.dashArray || null,
+                fillOpacity: polygon._backupStyle.fillOpacity ?? 0.4
+            });
+            delete polygon._backupStyle;
+        }
+    },
+
     _findPolygonById(id) {
         let found = null;
 
@@ -1139,7 +1182,7 @@ const MapManager = {
                     <div class="fw-bold mb-2 text-center">Edit Marker Aset</div>
                     <div class="mb-2">
                         <label class="form-label small mb-1">Tipe Aset</label>
-                        <select class="form-select form-select-sm" name="editTipe" disabled>
+                        <select class="form-select form-select-sm" name="editTipe">
                             ${tipeOptions}
                         </select>
                     </div>
@@ -1162,7 +1205,7 @@ const MapManager = {
                         <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="marker" data-id="${d.id}">🗑️ Hapus</button>
                     </div>
                 </div>`;
-                });
+                }, { autoPan: true, closeOnClick: false });
             });
 
             console.log(`✅ ${data.length} Marker loaded into Cluster Group`);
@@ -1264,7 +1307,7 @@ const MapManager = {
                                 <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="pipe" data-id="${d.id}">🗑️ Hapus</button>
                             </div>
                         </div>`;
-                }, { autoPan: false });
+                }, { autoPan: true, closeOnClick: false });
             });
 
             console.log(`✅ Pipa loaded (${isSVGMode ? 'SVG' : 'Canvas'}): ${data.length}`);
@@ -1392,7 +1435,7 @@ const MapManager = {
                                 <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
                             </div>
                         </div>`;
-                    }, { autoPan: false });
+                    }, { autoPan: true, closeOnClick: false });
                 }
             });
 
@@ -1804,6 +1847,7 @@ const MapManager = {
 
             this._ensureMarkerDragging(marker);
             if (marker.dragging) marker.dragging.disable();
+            this._setMarkerEditingVisual(marker, false);
             marker.closePopup();
 
             // Persist pipes whose endpoints follow this marker (best-effort).
@@ -1854,6 +1898,7 @@ const MapManager = {
             }
 
             polygon.pm.disable();
+            this._setPolygonEditingVisual(polygon, false);
             polygon.closePopup();
             this._showBootstrapToast("saveToast");
         } catch (err) {
@@ -1929,6 +1974,7 @@ const MapManager = {
             layer._backupLatLng = layer.getLatLng();
             this._ensureMarkerDragging(layer);
             if (layer.dragging) layer.dragging.enable();
+            this._setMarkerEditingVisual(layer, true);
 
             if (!layer._pipeFollowBound) {
                 layer._pipeFollowBound = true;
@@ -2013,9 +2059,11 @@ const MapManager = {
                 iconSize: [12, 12],
             });
             layer.setIcon(editIcon);
+            layer.closePopup();
+        } else if (type === "srpolygon") {
+            this._setPolygonEditingVisual(layer, true);
+            layer.closePopup();
         }
-
-        // Biarkan popup tetap terbuka supaya tombol Save/Cancel tetap bisa diakses setelah enable edit/drag.
     },
 
     _handleCancel(button) {
@@ -2043,6 +2091,7 @@ const MapManager = {
             if (layer.pm) layer.pm.disable();
             this._ensureMarkerDragging(layer);
             if (layer.dragging) layer.dragging.disable();
+            if (type === "marker") this._setMarkerEditingVisual(layer, false);
             layer.closePopup();
 
             // Kembalikan style normal untuk marker
@@ -2065,6 +2114,7 @@ const MapManager = {
                 layer.setLatLng(layer._backupLatLng);
                 delete layer._backupLatLng;
             }
+            if (type === "srpolygon") this._setPolygonEditingVisual(layer, false);
             if (type === "marker" && layer._linkedPipes && layer._linkedPipes.length) {
                 // Restore linked pipe endpoints to original when canceling marker move.
                 for (const link of layer._linkedPipes) {

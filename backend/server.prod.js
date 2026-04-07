@@ -703,7 +703,7 @@ app.post('/webhook', async (req, res) => {
 async function getStatusLogger() {
   const query = `
     SELECT l.nama, ll.jam 
-    FROM lokasi_logger l
+    FROM logger_lokasi l
     LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
     WHERE l.skip_monitor = 0
   `;
@@ -732,7 +732,7 @@ async function cekLoggerDanNotif() {
       SELECT l.idmet, l.nama, ll.jam,
              CASE WHEN ll.jam < NOW() - INTERVAL '1 hour' OR ll.jam IS NULL THEN 'OFFLINE' ELSE 'ONLINE' END as status_skr,
              ns.status_terakhir as status_lama
-      FROM lokasi_logger l
+      FROM logger_lokasi l
       LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
       LEFT JOIN notif_status ns ON l.idmet = ns.idmet
       WHERE l.skip_monitor = 0
