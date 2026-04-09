@@ -26,7 +26,7 @@ dbPostgres.connect((err, client, release) => {
   if (err) {
     return console.error('❌ Gagal menyambung ke PostgreSQL:', err.stack);
   }
-  console.log('✅ Terhubung ke PostgreSQL Railway dengan sukses');
+  console.log('✅ Terhubung ke PostgreSQL NeonTech dengan sukses');
   release();
 });
 

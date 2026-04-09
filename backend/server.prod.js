@@ -7,6 +7,8 @@ const bcrypt = require('bcrypt');
 const cron = require('node-cron');
 const fs = require('fs');
 const isProduction = process.env.NODE_ENV === 'production';
+const TELEGRAM_TOKEN = process.env.TELEGRAM_TOKEN;
+const ADMIN_ID = process.env.ADMIN_ID;
 
 // Gunakan node-fetch jika versi Node.js kamu di bawah 18, 
 // tapi di Railway (Node 18+) fetch sudah global.
@@ -705,7 +707,7 @@ async function getStatusLogger() {
     SELECT l.nama, ll.jam 
     FROM logger_lokasi l
     LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
-    WHERE l.skip_monitor = 0
+    WHERE l.skip_monitor = FALSE
   `;
   const { rows } = await dbPostgres.query(query);
   const now = new Date();
@@ -735,7 +737,7 @@ async function cekLoggerDanNotif() {
       FROM logger_lokasi l
       LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
       LEFT JOIN notif_status ns ON l.idmet = ns.idmet
-      WHERE l.skip_monitor = 0
+      WHERE l.skip_monitor = FALSE
     `;
     const { rows } = await dbPostgres.query(query);
     let alerts = [];
