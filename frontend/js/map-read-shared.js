@@ -335,6 +335,9 @@
                     const item = document.createElement('div');
                     const label = typeof this._formatLegendLabel === 'function' ? this._formatLegendLabel(dia) : dia;
                     item.innerHTML = `<span class="legend-line" style="background:${color}; height:6px;"></span> ${label}`;
+                    if (typeof this.filterPipaByDiameter === 'function') {
+                        item.onclick = () => this.filterPipaByDiameter(dia);
+                    }
                     legendDiv.appendChild(item);
                 });
             } catch (err) {
