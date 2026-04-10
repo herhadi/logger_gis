@@ -1187,6 +1187,10 @@ const MapManager = {
             const SVG_INTERACTIVE_ZOOM = 18;
             const currentZoom = this.layers.map.getZoom();
             const isSVGMode = currentZoom >= SVG_INTERACTIVE_ZOOM;
+            const query = new URLSearchParams();
+
+            if (bbox) query.set('bbox', bbox);
+            query.set('zoom', currentZoom);
 
             // Jika sebelumnya pernah render Canvas, canvas-nya bisa menutupi SVG polygon.
             // Saat mode SVG, matikan pointer-events pada canvas pipa agar event bisa "tembus".
@@ -1194,7 +1198,7 @@ const MapManager = {
                 this.layers.pipaCanvasRenderer._container.style.pointerEvents = isSVGMode ? 'none' : 'auto';
             }
 
-            const res = await fetch(`/api/pipa?bbox=${bbox}`);
+            const res = await fetch(`/api/pipa?${query.toString()}`);
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const data = await res.json();
 
@@ -1288,6 +1292,10 @@ const MapManager = {
         const currentZoom = this.layers.map.getZoom();
         const SVG_INTERACTIVE_ZOOM = 18;
         const isSVGMode = currentZoom >= SVG_INTERACTIVE_ZOOM;
+        const query = new URLSearchParams();
+
+        if (bbox) query.set('bbox', bbox);
+        query.set('zoom', currentZoom);
 
         // Jika canvas polygon pernah dibuat, matikan pointer-events saat mode SVG agar tidak menutupi path SVG.
         if (this.layers.polyCanvasRenderer?._container) {
@@ -1309,7 +1317,7 @@ const MapManager = {
         try {
             console.log(`[DEBUG] 3. Fetching data for BBOX: ${bbox}`);
 
-            const response = await fetch(`/api/polygon?bbox=${bbox}`);
+            const response = await fetch(`/api/polygon?${query.toString()}`);
             if (!response.ok) throw new Error(`HTTP ${response.status}`);
             const data = await response.json();
 

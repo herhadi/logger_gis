@@ -130,6 +130,12 @@ function requireLogin(req, res, next) {
 // GET semua pipa
 app.get('/api/pipa', async (req, res) => {
   try {
+    const zoom = Number(req.query.zoom);
+    const simplifyTolerance =
+      Number.isFinite(zoom) && zoom < 14 ? 0.0002 :
+      Number.isFinite(zoom) && zoom < 16 ? 0.00008 :
+      0;
+
     let sql = `
       SELECT 
         ogr_fid AS id, 
@@ -137,12 +143,17 @@ app.get('/api/pipa', async (req, res) => {
         panjang AS panjang_input,
         ROUND(ST_Length(shape::geography)) AS panjang_hitung, 
         keterangan, lokasi, status, diameter, roughness, zona,
-        -- KITA BALIK DI SINI: PostGIS membalik Lng,Lat menjadi Lat,Lng
-        -- Lalu kita ambil langsung array 'coordinates'-nya saja
-        ST_AsGeoJSON(ST_FlipCoordinates(shape))::json->'coordinates' AS geometry
+        ST_AsGeoJSON(
+          ST_FlipCoordinates(
+            CASE
+              WHEN $1::float > 0 THEN ST_SimplifyPreserveTopology(shape, $1::float)
+              ELSE shape
+            END
+          )
+        )::json->'coordinates' AS geometry
       FROM gis_pipa
     `;
-    const params = [];
+    const params = [simplifyTolerance];
 
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
@@ -150,7 +161,7 @@ app.get('/api/pipa', async (req, res) => {
         // Urutan Leaflet bbox biasanya: [South, West, North, East]
         // PostGIS ST_MakeEnvelope: (min_lng, min_lat, max_lng, max_lat, srid)
         const [south, west, north, east] = bbox;
-        sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        sql += ` WHERE shape && ST_MakeEnvelope($2, $3, $4, $5, 4326)`;
         params.push(west, south, east, north);
       }
     }
@@ -314,6 +325,12 @@ app.get('/api/pipa/option', async (req, res) => {
 // GET semua Polygon
 app.get('/api/polygon', async (req, res) => {
   try {
+    const zoom = Number(req.query.zoom);
+    const simplifyTolerance =
+      Number.isFinite(zoom) && zoom < 15 ? 0.00015 :
+      Number.isFinite(zoom) && zoom < 17 ? 0.00005 :
+      0;
+
     let sql = `
       SELECT 
         ogr_fid AS id, 
@@ -321,20 +338,25 @@ app.get('/api/polygon', async (req, res) => {
         luas AS luas_input, 
         lsval, 
         nosambckup,
-        -- 1. Balik koordinat (Lng,Lat -> Lat,Lng)
-        -- 2. Ambil hanya array 'coordinates' agar payload lebih ramping
-        ST_AsGeoJSON(ST_FlipCoordinates(shape))::json->'coordinates' AS geometry,
+        ST_AsGeoJSON(
+          ST_FlipCoordinates(
+            CASE
+              WHEN $1::float > 0 THEN ST_SimplifyPreserveTopology(shape, $1::float)
+              ELSE shape
+            END
+          )
+        )::json->'coordinates' AS geometry,
         ROUND(ST_Area(shape::geography)) AS luas_hitung 
       FROM gis_srpolygon
     `;
-    const params = [];
+    const params = [simplifyTolerance];
 
     if (req.query.bbox) {
       const bbox = req.query.bbox.split(',').map(Number);
       if (bbox.length === 4) {
         // Urutan: South, West, North, East (Standard Leaflet BBOX)
         const [south, west, north, east] = bbox;
-        sql += ` WHERE shape && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
+        sql += ` WHERE shape && ST_MakeEnvelope($2, $3, $4, $5, 4326)`;
         // Urutan Envelope: min_lng, min_lat, max_lng, max_lat
         params.push(west, south, east, north);
       }
