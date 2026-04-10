@@ -1593,7 +1593,14 @@ const MapManager = {
         if (!confirm("Yakin hapus marker ini?")) return;
 
         try {
-            const res = await fetch(`/api/marker/delete/${id}`, { method: "DELETE" });
+            const marker = this._findMarkerById(id);
+            const tipe = (marker?.featureData?.tipe || marker?._originalTipe || '').toString();
+
+            if (!tipe) {
+                throw new Error("Tipe marker tidak ditemukan");
+            }
+
+            const res = await fetch(`/api/marker/delete/${encodeURIComponent(tipe)}/${id}`, { method: "DELETE" });
             if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
 
             // Hapus dari semua layer groups
@@ -1607,7 +1614,7 @@ const MapManager = {
 
             this.showToast("Marker berhasil dihapus", "success");
         } catch (err) {
-            this.showToast("Gagal menghapus marker", "danger");
+            this.showToast("Gagal menghapus marker: " + err.message, "danger");
         }
     },
 

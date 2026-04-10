@@ -584,6 +584,31 @@ app.put('/api/marker/update/:tipe/:id', requireLogin, async (req, res) => {
   }
 });
 
+// 4. DELETE marker
+app.delete('/api/marker/delete/:tipe/:id', requireLogin, async (req, res) => {
+  try {
+    const { id, tipe } = req.params;
+
+    const whitelist = {
+      'acc': 'gis_acc',
+      'reservoir': 'gis_reservoir',
+      'tank': 'gis_tank',
+      'valve': 'gis_valve'
+    };
+
+    const tableName = whitelist[tipe];
+    if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak valid' });
+
+    const result = await dbPostgres.query(`DELETE FROM ${tableName} WHERE ogr_fid = $1`, [id]);
+    if (result.rowCount === 0) return res.status(404).json({ error: 'Marker tidak ditemukan' });
+
+    res.json({ success: true, message: `Marker ${tipe} berhasil dihapus` });
+  } catch (err) {
+    console.error('Delete Marker Error:', err.message);
+    res.status(500).json({ error: 'Gagal menghapus marker' });
+  }
+});
+
 // Telegram Bot Setup
 // ==========================================
 // 1. HELPER FUNCTIONS
