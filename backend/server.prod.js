@@ -139,10 +139,7 @@ app.get('/api/pipa', async (req, res) => {
     let sql = `
       SELECT 
         ogr_fid AS id, 
-        dc_id, dia, jenis, 
-        panjang AS panjang_input,
-        ROUND(ST_Length(shape::geography)) AS panjang_hitung, 
-        keterangan, lokasi, status, diameter, roughness, zona,
+        diameter,
         ST_AsGeoJSON(
           ST_FlipCoordinates(
             CASE
@@ -172,6 +169,29 @@ app.get('/api/pipa', async (req, res) => {
   } catch (err) {
     console.error('Error get pipa:', err);
     res.status(500).json({ error: 'Gagal mengambil data pipa' });
+  }
+});
+
+app.get('/api/pipa/:id', requireLogin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await dbPostgres.query(`
+      SELECT
+        ogr_fid AS id,
+        dc_id, dia, jenis,
+        panjang AS panjang_input,
+        ROUND(ST_Length(shape::geography)) AS panjang_hitung,
+        keterangan, lokasi, status, diameter, roughness, zona
+      FROM gis_pipa
+      WHERE ogr_fid = $1
+    `, [id]);
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Pipa tidak ditemukan' });
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Pipa Detail Error:', err.message);
+    res.status(500).json({ error: 'Gagal memuat detail pipa' });
   }
 });
 
@@ -334,10 +354,6 @@ app.get('/api/polygon', async (req, res) => {
     let sql = `
       SELECT 
         ogr_fid AS id, 
-        nosamw, 
-        luas AS luas_input, 
-        lsval, 
-        nosambckup,
         ST_AsGeoJSON(
           ST_FlipCoordinates(
             CASE
@@ -345,8 +361,7 @@ app.get('/api/polygon', async (req, res) => {
               ELSE shape
             END
           )
-        )::json->'coordinates' AS geometry,
-        ROUND(ST_Area(shape::geography)) AS luas_hitung 
+        )::json->'coordinates' AS geometry
       FROM gis_srpolygon
     `;
     const params = [simplifyTolerance];
@@ -367,6 +382,30 @@ app.get('/api/polygon', async (req, res) => {
   } catch (err) {
     console.error('Error get polygon:', err);
     res.status(500).json({ error: 'Gagal mengambil data polygon' });
+  }
+});
+
+app.get('/api/polygon/:id', requireLogin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await dbPostgres.query(`
+      SELECT
+        ogr_fid AS id,
+        nosamw,
+        luas AS luas_input,
+        lsval,
+        nosambckup,
+        ROUND(ST_Area(shape::geography)) AS luas_hitung
+      FROM gis_srpolygon
+      WHERE ogr_fid = $1
+    `, [id]);
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Polygon tidak ditemukan' });
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Polygon Detail Error:', err.message);
+    res.status(500).json({ error: 'Gagal memuat detail polygon' });
   }
 });
 
@@ -565,18 +604,15 @@ app.get('/api/marker', async (req, res) => {
       SELECT 
         m.id, 
         ST_AsGeoJSON(m.geom)::json AS geometry, -- Casting langsung ke JSON di Postgres
-        m.tipe, 
-        m.keterangan, 
-        m.lokasi, 
-        m.elevation
+        m.tipe
       FROM (
-        SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe, keterangan, lokasi, elevation FROM gis_acc
+        SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe FROM gis_acc
         UNION ALL
-        SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_reservoir
+        SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe FROM gis_reservoir
         UNION ALL
-        SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe, NULL AS keterangan, NULL AS lokasi, elevation FROM gis_tank
+        SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe FROM gis_tank
         UNION ALL
-        SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe, keterangan, lokasi, elevation FROM gis_valve
+        SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe FROM gis_valve
       ) AS m
       ${whereClause}
     `;
@@ -593,6 +629,33 @@ app.get('/api/marker', async (req, res) => {
   } catch (err) {
     console.error("CRITICAL ERROR MARKER:", err.message);
     res.status(500).json({ error: "Gagal memuat marker" });
+  }
+});
+
+app.get('/api/marker/:tipe/:id', requireLogin, async (req, res) => {
+  try {
+    const { id, tipe } = req.params;
+    const whitelist = {
+      'acc': 'gis_acc',
+      'reservoir': 'gis_reservoir',
+      'tank': 'gis_tank',
+      'valve': 'gis_valve'
+    };
+
+    const tableName = whitelist[tipe];
+    if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak valid' });
+
+    const { rows } = await dbPostgres.query(
+      `SELECT ogr_fid AS id, dc_id, keterangan, zona, lokasi, elevation FROM ${tableName} WHERE ogr_fid = $1`,
+      [id]
+    );
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Marker tidak ditemukan' });
+
+    res.json({ ...rows[0], tipe });
+  } catch (err) {
+    console.error('Marker Detail Error:', err.message);
+    res.status(500).json({ error: 'Gagal memuat detail marker' });
   }
 });
 

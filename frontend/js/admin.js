@@ -904,6 +904,124 @@ const MapManager = {
         return /\bmm\b/i.test(v) ? v : `${v} mm`;
     },
 
+    _renderMarkerPopupContent(d) {
+        const tipeOptions = Object.keys(this.state.colorMap).map(t =>
+            `<option value="${t}" ${t === d.tipe ? "selected" : ""}>${t.toUpperCase()}</option>`
+        ).join("");
+
+        return `
+            <div class="p-2" style="min-width:250px">
+                <div class="fw-bold mb-2 text-center">Edit Marker Aset</div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Tipe Aset</label>
+                    <select class="form-select form-select-sm" name="editTipe">
+                        ${tipeOptions}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Elevasi</label>
+                    <input type="number" class="form-control form-control-sm" name="editElevation" value="${d.elevation || ''}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Lokasi</label>
+                    <input type="text" class="form-control form-control-sm" name="editLokasi" value="${d.lokasi || ''}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Keterangan</label>
+                    <input type="text" class="form-control form-control-sm" name="editKeterangan" value="${d.keterangan || ''}">
+                </div>
+                <div class="d-flex gap-1 mt-3">
+                    <button class="btn btn-sm btn-success flex-fill btn-save" data-type="marker" data-id="${d.id}">💾 Simpan</button>
+                    <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="marker" data-id="${d.id}">✏️ Edit</button>
+                    <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="marker" data-id="${d.id}">❌ Batal</button>
+                    <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="marker" data-id="${d.id}">🗑️ Hapus</button>
+                </div>
+            </div>`;
+    },
+
+    _renderPipaPopupContent(d) {
+        const diameterOptions = (this.state.diameterList || []).map(opt => {
+            const norm = this._normalizeDiameterValue(opt);
+            const selected = this._normalizeDiameterValue(d.diameter) === norm ? "selected" : "";
+            return `<option value="${norm}" ${selected}>${norm}</option>`;
+        }).join("");
+
+        const jenisOptions = (this.state.jenisList || []).map(opt => {
+            const selected = (d.jenis || '') === opt ? "selected" : "";
+            return `<option value="${opt}" ${selected}>${opt}</option>`;
+        }).join("");
+
+        return `
+            <div class="p-2" style="min-width:250px">
+                <div class="fw-bold mb-2 text-center">Edit Pipa</div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Diameter</label>
+                    <select class="form-select form-select-sm" name="editDiameter">
+                        <option value="">-- Pilih Diameter --</option>
+                        ${diameterOptions}
+                    </select>
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Jenis</label>
+                    <select class="form-select form-select-sm" name="editJenis">
+                        <option value="">-- Pilih Jenis --</option>
+                        ${jenisOptions}
+                    </select>
+                </div>
+                <div class="d-flex gap-1 mt-3">
+                    <button class="btn btn-sm btn-success flex-fill btn-save" data-type="pipe" data-id="${d.id}">💾 Simpan</button>
+                    <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="pipe" data-id="${d.id}">✏️ Edit</button>
+                    <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="pipe" data-id="${d.id}">❌ Batal</button>
+                    <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="pipe" data-id="${d.id}">🗑️ Hapus</button>
+                </div>
+            </div>`;
+    },
+
+    _renderPolygonPopupContent(d) {
+        return `
+            <div class="p-2" style="min-width:250px">
+                <div class="fw-bold mb-2 text-center">Edit Polygon</div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">No SAMW</label>
+                    <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
+                </div>
+                <div class="mb-2">
+                    <label class="form-label small mb-1">Luas (m²)</label>
+                    <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.luas_hitung || 0}" readonly>
+                </div>
+                <div class="d-flex gap-1 mt-3">
+                    <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
+                    <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
+                    <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
+                </div>
+            </div>`;
+    },
+
+    async _loadMarkerDetail(marker) {
+        if (!marker?.featureData?.id || marker.featureData._detailLoaded) return;
+        const tipe = (marker.featureData.tipe || marker._originalTipe || '').toString();
+        const res = await fetch(`/api/marker/${encodeURIComponent(tipe)}/${marker.featureData.id}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        marker.featureData = { ...marker.featureData, ...data, _detailLoaded: true };
+    },
+
+    async _loadPipaDetail(line) {
+        if (!line?.featureData?.id || line.featureData._detailLoaded) return;
+        const res = await fetch(`/api/pipa/${line.featureData.id}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        line.featureData = { ...line.featureData, ...data, _detailLoaded: true };
+    },
+
+    async _loadPolygonDetail(polygon) {
+        if (!polygon?.featureData?.id || polygon.featureData._detailLoaded) return;
+        const res = await fetch(`/api/polygon/${polygon.featureData.id}`);
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+        polygon.featureData = { ...polygon.featureData, ...data, _detailLoaded: true };
+    },
+
     _latLngKey(latlng) {
         // Round for stable endpoint matching.
         if (!latlng) return '';
@@ -1135,43 +1253,15 @@ const MapManager = {
                 // Tambahkan ke Cluster Group
                 this.layers.markerGroup.addLayer(marker);
 
-                // LAZY POPUP: HTML dibuat hanya saat marker diklik
-                marker.bindPopup(() => {
-                    const d = marker.featureData; // Mengambil data terbaru dari objek marker
-
-                    const tipeOptions = Object.keys(this.state.colorMap).map(t =>
-                        `<option value="${t}" ${t === d.tipe ? "selected" : ""}>${t.toUpperCase()}</option>`
-                    ).join("");
-
-                    return `
-                <div class="p-2" style="min-width:250px">
-                    <div class="fw-bold mb-2 text-center">Edit Marker Aset</div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">Tipe Aset</label>
-                        <select class="form-select form-select-sm" name="editTipe">
-                            ${tipeOptions}
-                        </select>
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">Elevasi</label>
-                        <input type="number" class="form-control form-control-sm" name="editElevation" value="${d.elevation || ''}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">Lokasi</label>
-                        <input type="text" class="form-control form-control-sm" name="editLokasi" value="${d.lokasi || ''}">
-                    </div>
-                    <div class="mb-2">
-                        <label class="form-label small mb-1">Keterangan</label>
-                        <input type="text" class="form-control form-control-sm" name="editKeterangan" value="${d.keterangan || ''}">
-                    </div>
-                    <div class="d-flex gap-1 mt-3">
-                        <button class="btn btn-sm btn-success flex-fill btn-save" data-type="marker" data-id="${d.id}">💾 Simpan</button>
-                        <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="marker" data-id="${d.id}">✏️ Edit</button>
-                        <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="marker" data-id="${d.id}">❌ Batal</button>
-                        <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="marker" data-id="${d.id}">🗑️ Hapus</button>
-                    </div>
-                </div>`;
-                }, { autoPan: true, closeOnClick: false });
+                marker.bindPopup(`<div class="p-2 small text-muted">Memuat detail marker...</div>`, { autoPan: true, closeOnClick: false });
+                marker.on('popupopen', async () => {
+                    try {
+                        await this._loadMarkerDetail(marker);
+                        marker.setPopupContent(this._renderMarkerPopupContent(marker.featureData));
+                    } catch (err) {
+                        marker.setPopupContent(`<div class="p-2 text-danger small">${err.message || 'Gagal memuat detail marker'}</div>`);
+                    }
+                });
             });
 
             console.log(`✅ ${data.length} Marker loaded into Cluster Group`);
@@ -1240,44 +1330,15 @@ const MapManager = {
                     this.layers.map.getContainer().style.cursor = '';
                 });
 
-                line.bindPopup(() => {
-                    const d = line.featureData;
-                    const diameterOptions = (this.state.diameterList || []).map(opt => {
-                        const norm = this._normalizeDiameterValue(opt);
-                        const selected = this._normalizeDiameterValue(d.diameter) === norm ? "selected" : "";
-                        return `<option value="${norm}" ${selected}>${norm}</option>`;
-                    }).join("");
-
-                    const jenisOptions = (this.state.jenisList || []).map(opt => {
-                        const selected = (d.jenis || '') === opt ? "selected" : "";
-                        return `<option value="${opt}" ${selected}>${opt}</option>`;
-                    }).join("");
-
-                    return `
-                        <div class="p-2" style="min-width:250px">
-                            <div class="fw-bold mb-2 text-center">Edit Pipa</div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">Diameter</label>
-                                <select class="form-select form-select-sm" name="editDiameter">
-                                    <option value="">-- Pilih Diameter --</option>
-                                    ${diameterOptions}
-                                </select>
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">Jenis</label>
-                                <select class="form-select form-select-sm" name="editJenis">
-                                    <option value="">-- Pilih Jenis --</option>
-                                    ${jenisOptions}
-                                </select>
-                            </div>
-                            <div class="d-flex gap-1 mt-3">
-                                <button class="btn btn-sm btn-success flex-fill btn-save" data-type="pipe" data-id="${d.id}">💾 Simpan</button>
-                                <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="pipe" data-id="${d.id}">✏️ Edit</button>
-                                <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="pipe" data-id="${d.id}">❌ Batal</button>
-                                <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="pipe" data-id="${d.id}">🗑️ Hapus</button>
-                            </div>
-                        </div>`;
-                }, { autoPan: true, closeOnClick: false });
+                line.bindPopup(`<div class="p-2 small text-muted">Memuat detail pipa...</div>`, { autoPan: true, closeOnClick: false });
+                line.on('popupopen', async () => {
+                    try {
+                        await this._loadPipaDetail(line);
+                        line.setPopupContent(this._renderPipaPopupContent(line.featureData));
+                    } catch (err) {
+                        line.setPopupContent(`<div class="p-2 text-danger small">${err.message || 'Gagal memuat detail pipa'}</div>`);
+                    }
+                });
             });
 
             console.log(`✅ Pipa loaded (${isSVGMode ? 'SVG' : 'Canvas'}): ${data.length}`);
@@ -1388,28 +1449,15 @@ const MapManager = {
                         this.layers.map.getContainer().style.cursor = '';
                     });
 
-                    // Bind Popup hanya di mode SVG
-                    // LAZY POPUP
-                    polygon.bindPopup(() => {
-                        const d = polygon.featureData;
-                        return `
-                        <div class="p-2" style="min-width:250px">
-                            <div class="fw-bold mb-2 text-center">Edit Polygon</div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">No SAMW</label>
-                                <input type="text" class="form-control form-control-sm" name="editNosamw" value="${d.nosamw || ''}">
-                            </div>
-                            <div class="mb-2">
-                                <label class="form-label small mb-1">Luas (m²)</label>
-                                <input type="text" class="form-control form-control-sm" name="editLuas" value="${d.luas_hitung || 0}" readonly>
-                            </div>
-                            <div class="d-flex gap-1 mt-3">
-                                <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${d.id}">💾 Simpan</button>
-                                <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${d.id}">✏️ Edit</button>
-                                <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${d.id}">🗑️ Hapus</button>
-                            </div>
-                        </div>`;
-                    }, { autoPan: true, closeOnClick: false });
+                    polygon.bindPopup(`<div class="p-2 small text-muted">Memuat detail polygon...</div>`, { autoPan: true, closeOnClick: false });
+                    polygon.on('popupopen', async () => {
+                        try {
+                            await this._loadPolygonDetail(polygon);
+                            polygon.setPopupContent(this._renderPolygonPopupContent(polygon.featureData));
+                        } catch (err) {
+                            polygon.setPopupContent(`<div class="p-2 text-danger small">${err.message || 'Gagal memuat detail polygon'}</div>`);
+                        }
+                    });
                 }
             });
 
