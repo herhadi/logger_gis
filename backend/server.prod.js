@@ -172,29 +172,6 @@ app.get('/api/pipa', async (req, res) => {
   }
 });
 
-app.get('/api/pipa/:id', requireLogin, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { rows } = await dbPostgres.query(`
-      SELECT
-        ogr_fid AS id,
-        dc_id, dia, jenis,
-        panjang AS panjang_input,
-        ROUND(ST_Length(shape::geography)) AS panjang_hitung,
-        keterangan, lokasi, status, diameter, roughness, zona
-      FROM gis_pipa
-      WHERE ogr_fid = $1
-    `, [id]);
-
-    if (rows.length === 0) return res.status(404).json({ error: 'Pipa tidak ditemukan' });
-
-    res.json(rows[0]);
-  } catch (err) {
-    console.error('Pipa Detail Error:', err.message);
-    res.status(500).json({ error: 'Gagal memuat detail pipa' });
-  }
-});
-
 // CREATE pipa
 app.post('/api/pipa/create', requireLogin, async (req, res) => {
   try {
@@ -338,6 +315,29 @@ app.get('/api/pipa/option', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Gagal memuat opsi pipa' });
+  }
+});
+
+app.get('/api/pipa/:id', requireLogin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await dbPostgres.query(`
+      SELECT
+        ogr_fid AS id,
+        dc_id, dia, jenis,
+        panjang AS panjang_input,
+        ROUND(ST_Length(shape::geography)) AS panjang_hitung,
+        keterangan, lokasi, status, diameter, roughness, zona
+      FROM gis_pipa
+      WHERE ogr_fid = $1
+    `, [id]);
+
+    if (rows.length === 0) return res.status(404).json({ error: 'Pipa tidak ditemukan' });
+
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('Pipa Detail Error:', err.message);
+    res.status(500).json({ error: 'Gagal memuat detail pipa' });
   }
 });
 
