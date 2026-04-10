@@ -105,6 +105,25 @@
         async loadAllLayers() {
             if (!this.layers.map) return;
 
+            // Keep popup stable while panning: defer heavy layer reload until popup closes.
+            const activePopup = this.layers.map._popup;
+            const popupIsOpen = !!(activePopup && this.layers.map.hasLayer(activePopup));
+            if (popupIsOpen) {
+                this.state._reloadAfterPopupClose = true;
+
+                if (!this.state._popupReloadListenerAttached) {
+                    this.state._popupReloadListenerAttached = true;
+                    this.layers.map.once('popupclose', () => {
+                        this.state._popupReloadListenerAttached = false;
+                        if (this.state._reloadAfterPopupClose) {
+                            this.state._reloadAfterPopupClose = false;
+                            this.loadAllLayers();
+                        }
+                    });
+                }
+                return;
+            }
+
             const bounds = this.layers.map.getBounds();
             if (!bounds.isValid()) return;
 
