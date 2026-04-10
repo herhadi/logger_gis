@@ -16,3 +16,7 @@ npm-debug.log*
 seedAdmin.js
 seedUser.js
 .gitignore
+
+# SSH keys / secrets
+backend/logger_gis
+backend/logger_gis.pub
