@@ -512,12 +512,12 @@ const MapManager = {
             .openPopup();
     },
 
-    _handleDrawCreated(e) {
+    async _handleDrawCreated(e) {
         this.state.geomanDisabledByDraw = true;
         const layer = e.layer;
         this.layers.selectionLayer.addLayer(layer);
 
-        const resultHtml = this._calculateGeometryInArea(layer.toGeoJSON());
+        const resultHtml = await this._calculateGeometryInArea(layer.toGeoJSON());
         const latlngs = layer.getLatLngs()[0];
         const area = L.GeometryUtil.geodesicArea(latlngs);
         const ha = (area / 10000).toFixed(2);
@@ -528,17 +528,21 @@ const MapManager = {
         setTimeout(() => layer.openPopup(anchor), 0);
     },
 
-    _handleDrawEdited(e) {
+    async _handleDrawEdited(e) {
+        const tasks = [];
         e.layers.eachLayer(layer => {
-            const resultHtml = this._calculateGeometryInArea(layer.toGeoJSON());
-            const latlngs = layer.getLatLngs()[0];
-            const area = L.GeometryUtil.geodesicArea(latlngs);
-            const ha = (area / 10000).toFixed(2);
-            const firstLatLng = latlngs[0];
+            tasks.push((async () => {
+                const resultHtml = await this._calculateGeometryInArea(layer.toGeoJSON());
+                const latlngs = layer.getLatLngs()[0];
+                const area = L.GeometryUtil.geodesicArea(latlngs);
+                const ha = (area / 10000).toFixed(2);
+                const firstLatLng = latlngs[0];
 
-        layer.bindPopup(`<b>Luas:</b> ${ha} ha<br>${resultHtml}`, { autoPan: true, closeOnClick: false })
-            .openPopup(firstLatLng);
+                layer.bindPopup(`<b>Luas:</b> ${ha} ha<br>${resultHtml}`, { autoPan: true, closeOnClick: false })
+                    .openPopup(firstLatLng);
+            })());
         });
+        await Promise.all(tasks);
     },
 
     _handlePmCreate(e) {
@@ -852,65 +856,27 @@ const MapManager = {
         return Math.round(Math.abs(area) * R * R / 2);
     },
 
-    _calculateGeometryInArea(selectionPolygon) {
-        let totalPoint = 0, totalLine = 0, totalPolygon = 0;
-
-        // 1. Dapatkan BBox dari area seleksi (Sangat cepat)
-        const selectionLayer = L.geoJSON(selectionPolygon);
-        const selectionBounds = selectionLayer.getBounds();
-
-        // 2. Iterasi semua layer di geometryLayer
-        this.layers.geometryLayer.eachLayer(layer => {
-            // Cek apakah layer ini memiliki koordinat/bounds
-            const itemBounds = layer.getBounds ? layer.getBounds() : L.latLngBounds(layer.getLatLng(), layer.getLatLng());
-
-            // FILTER TAHAP 1: Cek apakah BBox item ada di dalam BBox seleksi
-            // Ini operasi matematika sederhana (jauh lebih cepat dari Turf)
-            if (selectionBounds.intersects(itemBounds)) {
-
-                // FILTER TAHAP 2: Jika lolos BBox, baru jalankan kalkulasi presisi Turf
-                const feature = layer.toGeoJSON();
-
-                try {
-                    switch (feature.geometry.type) {
-                        case 'Point':
-                            if (turf.booleanPointInPolygon(feature, selectionPolygon)) totalPoint++;
-                            break;
-                        case 'LineString':
-                            // Gunakan booleanIntersects untuk pipa agar lebih akurat
-                            if (turf.booleanIntersects(feature, selectionPolygon)) totalLine++;
-                            break;
-                        case 'Polygon':
-                            // Hanya hitung jika poligon benar-benar di dalam atau berpotongan
-                            if (this.state.layerVisibility.polygons && turf.booleanIntersects(feature, selectionPolygon)) {
-                                totalPolygon++;
-                            }
-                            break;
-                    }
-                } catch (e) {
-                    console.warn("Kalkulasi spasial gagal untuk satu item:", e);
-                }
-            }
-        });
-
-        // 3. Analisis dari CACHE (Jika layer poligon tidak aktif)
-        // Gunakan logika yang sama: Cek BBox dulu baru Turf
-        if (!this.state.layerVisibility.polygons && this.state.cachedPolygonData.length > 0) {
-            this.state.cachedPolygonData.forEach(polyData => {
-                if (polyData.polygon && polyData.polygon.length >= 3) {
-                    // Konversi cepat ke Lng/Lat untuk Turf
-                    const turfCoords = [polyData.polygon.map(coord => [coord[1], coord[0]])];
-                    const polygonFeature = turf.polygon(turfCoords);
-
-                    // Gunakan turf.bboxPolygon untuk pengecekan cepat sebelum booleanWithin
-                    if (turf.booleanIntersects(polygonFeature, selectionPolygon)) {
-                        totalPolygon++;
-                    }
-                }
+    async _calculateGeometryInArea(selectionPolygon) {
+        try {
+            const res = await fetch('/api/selection/stats', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    geometry: selectionPolygon.geometry,
+                    includePoints: this.state.layerVisibility.markers,
+                    includeLines: this.state.layerVisibility.pipes,
+                    includePolygons: true
+                })
             });
-        }
 
-        return `<b>Point:</b> ${totalPoint}<br><b>Line:</b> ${totalLine}<br><b>Polygon:</b> ${totalPolygon}`;
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+
+            return `<b>Point:</b> ${data.pointCount || 0}<br><b>Line:</b> ${data.lineCount || 0}<br><b>Polygon:</b> ${data.polygonCount || 0}`;
+        } catch (err) {
+            console.error("Gagal menghitung statistik area:", err);
+            return `<b>Point:</b> -<br><b>Line:</b> -<br><b>Polygon:</b> -`;
+        }
     },
 
     _getLatLng(m) {

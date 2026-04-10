@@ -348,6 +348,71 @@ app.get('/api/polygon', async (req, res) => {
   }
 });
 
+app.post('/api/selection/stats', async (req, res) => {
+  try {
+    const { geometry, includePoints = true, includeLines = true, includePolygons = true } = req.body || {};
+
+    if (!geometry || geometry.type !== 'Polygon' || !Array.isArray(geometry.coordinates)) {
+      return res.status(400).json({ error: 'Geometry polygon tidak valid' });
+    }
+
+    const geometryJson = JSON.stringify(geometry);
+    const sql = `
+      WITH selection AS (
+        SELECT ST_MakeValid(ST_SetSRID(ST_GeomFromGeoJSON($1), 4326)) AS geom
+      ),
+      point_count AS (
+        SELECT COUNT(*)::int AS total
+        FROM (
+          SELECT shape FROM gis_acc
+          UNION ALL
+          SELECT shape FROM gis_reservoir
+          UNION ALL
+          SELECT shape FROM gis_tank
+          UNION ALL
+          SELECT shape FROM gis_valve
+        ) pts
+        CROSS JOIN selection s
+        WHERE $2::boolean = TRUE
+          AND pts.shape IS NOT NULL
+          AND ST_Intersects(pts.shape, s.geom)
+      ),
+      line_count AS (
+        SELECT COUNT(*)::int AS total
+        FROM gis_pipa p
+        CROSS JOIN selection s
+        WHERE $3::boolean = TRUE
+          AND p.shape IS NOT NULL
+          AND ST_Intersects(p.shape, s.geom)
+      ),
+      polygon_count AS (
+        SELECT COUNT(*)::int AS total
+        FROM gis_srpolygon poly
+        CROSS JOIN selection s
+        WHERE $4::boolean = TRUE
+          AND poly.shape IS NOT NULL
+          AND ST_Intersects(poly.shape, s.geom)
+      )
+      SELECT
+        (SELECT total FROM point_count) AS point_count,
+        (SELECT total FROM line_count) AS line_count,
+        (SELECT total FROM polygon_count) AS polygon_count
+    `;
+
+    const { rows } = await dbPostgres.query(sql, [geometryJson, includePoints, includeLines, includePolygons]);
+    const row = rows[0] || {};
+
+    res.json({
+      pointCount: row.point_count || 0,
+      lineCount: row.line_count || 0,
+      polygonCount: row.polygon_count || 0
+    });
+  } catch (err) {
+    console.error('Selection Stats Error:', err.message);
+    res.status(500).json({ error: 'Gagal menghitung statistik area' });
+  }
+});
+
 // CREATE polygon
 app.post('/api/polygon/create', requireLogin, async (req, res) => {
   try {
