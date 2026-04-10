@@ -244,16 +244,12 @@
         async deletePipa(id) {
             try {
                 const res = await fetch(`/api/pipa/delete/${id}`, { method: "DELETE" });
-                if (!res.ok) throw new Error(`HTTP error! Status: ${res.status}`);
-
-                if (this.layers.pipaLayers[id]) {
-                    this.layers.map.removeLayer(this.layers.pipaLayers[id]);
-                    delete this.layers.pipaLayers[id];
-                }
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || data.message || `HTTP error! Status: ${res.status}`);
 
                 this.showToast("Pipa berhasil dihapus", "success");
             } catch (err) {
-                this.showToast("Gagal menghapus pipa", "danger");
+                this.showToast("Gagal menghapus pipa: " + err.message, "danger");
             }
         },
 

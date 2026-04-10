@@ -297,6 +297,22 @@ app.put('/api/pipa/update/:id', requireLogin, async (req, res) => {
   }
 });
 
+app.delete('/api/pipa/delete/:id', requireLogin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const result = await dbPostgres.query('DELETE FROM gis_pipa WHERE ogr_fid = $1', [id]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Pipa tidak ditemukan' });
+    }
+
+    res.json({ success: true, message: 'Pipa berhasil dihapus' });
+  } catch (err) {
+    console.error('Error delete pipa:', err.message);
+    res.status(500).json({ error: 'Gagal menghapus pipa' });
+  }
+});
+
 // Endpoint Option (Diameter & Jenis)
 app.get('/api/pipa/option', async (req, res) => {
   try {
