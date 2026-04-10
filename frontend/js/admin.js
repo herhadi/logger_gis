@@ -904,6 +904,10 @@ const MapManager = {
         return /\bmm\b/i.test(v) ? v : `${v} mm`;
     },
 
+    _formatLegendLabel(dia) {
+        return `DN${dia}`;
+    },
+
     _renderMarkerPopupContent(d) {
         const tipeOptions = Object.keys(this.state.colorMap).map(t =>
             `<option value="${t}" ${t === d.tipe ? "selected" : ""}>${t.toUpperCase()}</option>`
@@ -2330,6 +2334,8 @@ const MapManager = {
         this.state.snapMarker = null;
     }
 };
+
+window.MapReadShared?.apply(MapManager);
 
 // ===============================
 // INITIALIZATION

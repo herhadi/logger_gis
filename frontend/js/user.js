@@ -385,6 +385,8 @@ const UserMap = {
     }
 };
 
+window.MapReadShared?.apply(UserMap);
+
 window.addEventListener('DOMContentLoaded', () => {
     UserMap.init();
 });
