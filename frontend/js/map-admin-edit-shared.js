@@ -110,7 +110,7 @@
             }
         },
 
-        async updateMarker(id, marker, payload) {
+        async updateMarker(id, marker, payload, options = {}) {
             const latlng = marker.getLatLng();
 
             try {
@@ -133,14 +133,19 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || "Gagal update marker");
 
+                marker.featureData = { ...(marker.featureData || {}), ...payload };
                 this.showToast("Marker berhasil diperbarui", "success");
-                if (this.layers.map) {
+
+                if (options.reload !== false && this.layers.map) {
                     const b = this.layers.map.getBounds();
                     const bbox1 = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
                     this.loadMarkers(bbox1);
                 }
+
+                return data;
             } catch (err) {
                 this.showToast("Gagal update marker: " + err.message, "danger");
+                throw err;
             }
         },
 
@@ -172,7 +177,7 @@
             }
         },
 
-        async savePipa(id, line, payload) {
+        async savePipa(id, line, payload, options = {}) {
             const coords = line.getLatLngs().map(p => [p.lat, p.lng]);
             const dataToSend = {
                 coords,
@@ -198,16 +203,17 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || "Save pipa gagal");
 
+                line.featureData = { ...(line.featureData || {}), ...dataToSend };
                 this.showToast("Pipa berhasil disimpan", "success");
-                this.loadPipa();
+                if (options.reload !== false) this.loadPipa();
                 return data;
             } catch (err) {
-                this.showToast("error", err.message || "Terjadi kesalahan saat menyimpan pipa");
+                this.showToast(err.message || "Terjadi kesalahan saat menyimpan pipa", "danger");
                 throw err;
             }
         },
 
-        async updatePipa(id, layer, formData) {
+        async updatePipa(id, layer, formData, options = {}) {
             try {
                 const coords = layer.getLatLngs().map(latlng => [latlng.lat, latlng.lng]);
                 const payload = {
@@ -233,11 +239,13 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || "Gagal update pipa");
 
-                this.showToast("Pipa berhasil diperbarui", "success");
                 layer.featureData = { ...(layer.featureData || {}), ...payload };
-                this.loadPipa();
+                this.showToast("Pipa berhasil diperbarui", "success");
+                if (options.reload !== false) this.loadPipa();
+                return data;
             } catch (err) {
                 this.showToast("Gagal update pipa: " + err.message, "danger");
+                throw err;
             }
         },
 
@@ -345,7 +353,7 @@
         },
 
         async _handleSaveMarker(id) {
-            let marker = this.layers.markerGroupNew.getLayers().find(m => m._markerId == id) ||
+            const marker = this.layers.markerGroupNew.getLayers().find(m => m._markerId == id) ||
                 this._findMarkerById(id);
 
             if (!marker) return;
@@ -383,7 +391,7 @@
                     this.layers.markerGroupNew.removeLayer(marker);
                     this.layers.markerGroup.addLayer(marker);
                 } else {
-                    await this.updateMarker(id, marker, payload);
+                    await this.updateMarker(id, marker, payload, { reload: false });
                 }
 
                 marker.featureData = { ...marker.featureData, ...payload };
@@ -393,13 +401,15 @@
                 this._setMarkerEditingVisual(marker, false);
                 marker.closePopup();
 
+                let needsPipeReload = false;
                 if (marker._linkedPipes && marker._linkedPipes.length) {
                     const uniq = new Map();
                     for (const link of marker._linkedPipes) {
                         if (link?.line?._pipeId) uniq.set(String(link.line._pipeId), link.line);
                     }
-                    for (const line of uniq.values()) {
-                        await this.updatePipa(line._pipeId, line, {
+
+                    await Promise.all(Array.from(uniq.values()).map(line =>
+                        this.updatePipa(line._pipeId, line, {
                             dc_id: line.featureData?.dc_id,
                             dia: line.featureData?.dia,
                             jenis: line.featureData?.jenis,
@@ -410,8 +420,20 @@
                             diameter: line.featureData?.diameter,
                             roughness: line.featureData?.roughness,
                             zona: line.featureData?.zona
-                        });
-                    }
+                        }, { reload: false })
+                    ));
+
+                    needsPipeReload = uniq.size > 0;
+                }
+
+                if (needsPipeReload) {
+                    this.loadPipa();
+                }
+
+                if (id && id !== "new" && this.layers.map) {
+                    const b = this.layers.map.getBounds();
+                    const bbox1 = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()].join(",");
+                    this.loadMarkers(bbox1);
                 }
             } catch (err) {
                 console.error("Gagal simpan marker:", err);
@@ -547,35 +569,43 @@
                     });
 
                     layer.on('drag', () => {
-                        const newLatLng = layer.getLatLng();
-                        const moved = layer._linkedPipes || [];
-                        for (const link of moved) {
-                            const line = link.line;
-                            if (!line || typeof line.getLatLngs !== 'function') continue;
-                            const ll = line.getLatLngs();
-                            if (!Array.isArray(ll) || ll.length < 2) continue;
+                        layer._pendingDragLatLng = layer.getLatLng();
+                        if (layer._dragFrameScheduled) return;
 
-                            if (link.endpoint === 'start') ll[0] = newLatLng;
-                            else ll[ll.length - 1] = newLatLng;
-                            line.setLatLngs(ll);
+                        layer._dragFrameScheduled = true;
+                        requestAnimationFrame(() => {
+                            layer._dragFrameScheduled = false;
 
-                            const oldKey = line._endpointKeys?.[link.endpoint];
-                            const newKey = this._latLngKey(newLatLng);
-                            if (oldKey && oldKey !== newKey) {
-                                const set = this.state.pipeEndpointIndex.get(oldKey);
-                                if (set) {
-                                    set.delete(line);
-                                    if (set.size === 0) this.state.pipeEndpointIndex.delete(oldKey);
+                            const newLatLng = layer._pendingDragLatLng || layer.getLatLng();
+                            const moved = layer._linkedPipes || [];
+                            for (const link of moved) {
+                                const line = link.line;
+                                if (!line || typeof line.getLatLngs !== 'function') continue;
+                                const ll = line.getLatLngs();
+                                if (!Array.isArray(ll) || ll.length < 2) continue;
+
+                                if (link.endpoint === 'start') ll[0] = newLatLng;
+                                else ll[ll.length - 1] = newLatLng;
+                                line.setLatLngs(ll);
+
+                                const oldKey = line._endpointKeys?.[link.endpoint];
+                                const newKey = this._latLngKey(newLatLng);
+                                if (oldKey && oldKey !== newKey) {
+                                    const set = this.state.pipeEndpointIndex.get(oldKey);
+                                    if (set) {
+                                        set.delete(line);
+                                        if (set.size === 0) this.state.pipeEndpointIndex.delete(oldKey);
+                                    }
+                                    let next = this.state.pipeEndpointIndex.get(newKey);
+                                    if (!next) {
+                                        next = new Set();
+                                        this.state.pipeEndpointIndex.set(newKey, next);
+                                    }
+                                    next.add(line);
+                                    if (line._endpointKeys) line._endpointKeys[link.endpoint] = newKey;
                                 }
-                                let next = this.state.pipeEndpointIndex.get(newKey);
-                                if (!next) {
-                                    next = new Set();
-                                    this.state.pipeEndpointIndex.set(newKey, next);
-                                }
-                                next.add(line);
-                                if (line._endpointKeys) line._endpointKeys[link.endpoint] = newKey;
                             }
-                        }
+                        });
                     });
                 }
             } else if (typeof layer.getLatLngs === 'function') {

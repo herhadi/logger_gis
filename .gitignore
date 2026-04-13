@@ -13,9 +13,8 @@ node_modules/
 # Folder logs
 npm-debug.log*
 
-seedAdmin.js
-seedUser.js
 .gitignore
+*.md
 
 # SSH keys / secrets
 backend/logger_gis
