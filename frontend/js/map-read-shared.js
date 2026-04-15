@@ -250,6 +250,12 @@
         async loadPolygon(bbox) {
             if (!this.layers.map || !this.state.layerVisibility.polygons) return;
 
+            // Defer reload if polygon is being edited
+            if (this.state._deferPolygonReload) {
+                console.log('⏳ Deferring polygon reload due to active edit');
+                return;
+            }
+
             const currentZoom = this.layers.map.getZoom();
             const interactiveZoom = this.config.svgInteractiveZoom || 18;
             const isSVGMode = currentZoom >= interactiveZoom;
@@ -274,11 +280,32 @@
                 if (!response.ok) throw new Error(`HTTP ${response.status}`);
                 const data = await response.json();
 
-                clearLayerIfPossible(this.layers.polygonGroup);
+                // Get IDs of polygons currently in edit mode or newly created but not yet saved
+                const editingIds = new Set();
+                const newLocalPolygons = [];
+                
+                this.layers.polygonGroup.eachLayer(l => {
+                    if (l._isEditing) editingIds.add(String(l._polygonId));
+                });
+                
+                this.layers.polygonGroupNew.eachLayer(l => {
+                    newLocalPolygons.push(l);
+                });
+
+                // Clear only polygons that are NOT being edited
+                const layersToRemove = [];
+                this.layers.polygonGroup.eachLayer(l => {
+                    if (!l._isEditing) layersToRemove.push(l);
+                });
+                layersToRemove.forEach(l => this.layers.polygonGroup.removeLayer(l));
+                
                 clearLayerIfPossible(this.layers.polyGeometry);
                 clearLayerIfPossible(this.layers.geometryLayer);
 
                 data.forEach(poly => {
+                    // Skip if this polygon is already being edited (to prevent overwriting its current state)
+                    if (editingIds.has(String(poly.id))) return;
+
                     const ring = poly.geometry ? poly.geometry[0] : [];
                     if (!Array.isArray(ring) || ring.length < 3) return;
 

@@ -661,16 +661,34 @@ app.get('/api/marker/:tipe/:id', requireLogin, async (req, res) => {
     const tableName = whitelist[tipe];
     if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak valid' });
 
-    const { rows } = await dbPostgres.query(
-      `SELECT ogr_fid AS id, dc_id, keterangan, zona, lokasi, elevation FROM ${tableName} WHERE ogr_fid = $1`,
-      [id]
+    // Detect available columns so detail query stays compatible across table variants
+    const { rows: cols } = await dbPostgres.query(
+      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name IN ('ogr_fid', 'dc_id', 'keterangan', 'zona', 'lokasi', 'elevation')`,
+      [tableName]
     );
+
+    const availableColumns = new Set(cols.map(c => c.column_name));
+    const selectColumns = [];
+
+    if (availableColumns.has('ogr_fid')) selectColumns.push('ogr_fid AS id');
+    if (availableColumns.has('dc_id')) selectColumns.push('dc_id');
+    if (availableColumns.has('keterangan')) selectColumns.push('keterangan');
+    if (availableColumns.has('zona')) selectColumns.push('zona');
+    if (availableColumns.has('lokasi')) selectColumns.push('lokasi');
+    if (availableColumns.has('elevation')) selectColumns.push('elevation');
+
+    if (selectColumns.length === 0) {
+      return res.status(500).json({ error: 'Tabel marker tidak memiliki kolom metadata yang valid' });
+    }
+
+    const sql = `SELECT ${selectColumns.join(', ')} FROM ${tableName} WHERE ogr_fid = $1`;
+    const { rows } = await dbPostgres.query(sql, [id]);
 
     if (rows.length === 0) return res.status(404).json({ error: 'Marker tidak ditemukan' });
 
     res.json({ ...rows[0], tipe });
   } catch (err) {
-    console.error('Marker Detail Error:', err.message);
+    console.error('Marker Detail Error:', err);
     res.status(500).json({ error: 'Gagal memuat detail marker' });
   }
 });
@@ -678,7 +696,7 @@ app.get('/api/marker/:tipe/:id', requireLogin, async (req, res) => {
 // 2. CREATE marker (With Strict Table Validation)
 app.post('/api/marker/create', requireLogin, async (req, res) => {
   try {
-    const { coords, dc_id, tipe, keterangan, zona } = req.body;
+    const { coords, dc_id, tipe, keterangan, zona, lokasi, elevation } = req.body;
 
     // Validasi Input
     if (!coords || coords.length !== 2) return res.status(400).json({ error: 'Koordinat tidak valid' });
@@ -696,14 +714,47 @@ app.post('/api/marker/create', requireLogin, async (req, res) => {
 
     const wkt = `POINT(${coords[1]} ${coords[0]})`;
 
-    const sql = `INSERT INTO ${tableName} (shape, dc_id, keterangan, zona) 
-                 VALUES (ST_GeomFromText($1, 4326), $2, $3, $4) 
+    // Build dynamic SQL dengan hanya kolom yang ada value
+    const columns = ['shape', 'dc_id'];
+    const params = [wkt, dc_id];
+    let paramCount = 2;
+
+    if (keterangan !== null && keterangan !== undefined) {
+      columns.push('keterangan');
+      params.push(keterangan);
+      paramCount++;
+    }
+    if (zona !== null && zona !== undefined) {
+      columns.push('zona');
+      params.push(zona);
+      paramCount++;
+    }
+    if (lokasi !== null && lokasi !== undefined) {
+      columns.push('lokasi');
+      params.push(lokasi);
+      paramCount++;
+    }
+    if (elevation !== null && elevation !== undefined) {
+      columns.push('elevation');
+      params.push(elevation);
+      paramCount++;
+    }
+
+    // Create placeholders: $1 for shape (special ST_GeomFromText), $2+ for other columns
+    const placeholders = columns.map((col, idx) => {
+      if (idx === 0) return `ST_GeomFromText($1, 4326)`; // shape column needs ST_GeomFromText
+      return `$${idx + 1}`;
+    }).join(', ');
+    
+    const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) 
+                 VALUES (${placeholders}) 
                  RETURNING ogr_fid`;
 
-    const result = await dbPostgres.query(sql, [wkt, dc_id, keterangan, zona]);
+    const result = await dbPostgres.query(sql, params);
 
     res.json({
       id: result.rows[0].ogr_fid,
+      ogr_fid: result.rows[0].ogr_fid,
       success: true,
       message: `Marker ${tipe} berhasil disimpan`
     });

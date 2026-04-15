@@ -68,8 +68,7 @@ const MapManager = {
         polygonCount: 0,
         cachedPolygonData: [],
         pipeEndpointIndex: new Map(),
-        suppressMoveReloadUntil: 0,
-        markerGroupNew: L.layerGroup()
+        suppressMoveReloadUntil: 0
     },
 
     // ===============================
@@ -130,8 +129,9 @@ const MapManager = {
         // 1. Atur opsi global untuk Snapping (Magnet)
         this.layers.map.pm.setGlobalOptions({
             snappable: true,
-            snapDistance: 25, // Naikkan sedikit lagi agar lebih "magnetis"
+            snapDistance: 20, // Naikkan sedikit lagi agar lebih "magnetis"
             allowSelfIntersection: false,
+            continueDrawing: false,
             templineStyle: { color: 'orange', dashArray: '5, 5' },
             hintlineStyle: { color: 'orange', dashArray: '5, 5' },
         });
@@ -157,27 +157,38 @@ const MapManager = {
             this.layers.map.eachLayer((layer) => {
                 // Hanya buat "tembus" jika itu bukan layer yang sedang digambar
                 if ((layer instanceof L.Marker || layer instanceof L.Path) && layer !== e.workingLayer) {
-                    if (layer.getElement()) {
+                    if (typeof layer.getElement === 'function' && layer.getElement()) {
                         layer.getElement().style.pointerEvents = 'none';
                     }
                 }
             });
+
+            if (this.layers.map?.getContainer) {
+                const container = this.layers.map.getContainer();
+                container.focus?.();
+                container.style.cursor = 'crosshair';
+            }
         });
 
         // 4. FIX: Kembalikan interaksi setelah gambar selesai atau batal
         this.layers.map.on('pm:drawend', () => {
             this.layers.map.eachLayer((layer) => {
-                if (layer.getElement()) {
+                if (typeof layer.getElement === 'function' && layer.getElement()) {
                     layer.getElement().style.pointerEvents = 'auto'; // Kembalikan interaksi
                 }
             });
+
+            if (this.layers.map?.getContainer) {
+                const container = this.layers.map.getContainer();
+                container.style.cursor = '';
+            }
         });
 
         // 5. FIX: Pastikan mode edit/hapus juga tidak mengganggu interaksi layer lain
         this.layers.map.on('pm:globaleditmodetoggled pm:globalremovalmodetoggled', (e) => {
             const enabled = e.enabled;
             this.layers.map.eachLayer((layer) => {
-                if (layer.getElement()) {
+                if (typeof layer.getElement === 'function' && layer.getElement()) {
                     // Jika mode edit/hapus ON, pastikan bisa diklik (auto)
                     // Jika OFF, biarkan default
                     layer.getElement().style.pointerEvents = enabled ? 'auto' : 'auto';
@@ -246,7 +257,7 @@ const MapManager = {
     _setupLayerControl() {
         this.layers.overlays = {
             'Tampilkan Marker': this.layers.markerGroup,
-            'Marker Baru (Lokal)': this.state.markerGroupNew, // Tambahkan ini
+            'Marker Baru (Lokal)': this.layers.markerGroupNew, // Tambahkan ini
             'Tampilkan Pipa': this.layers.pipeGroup,
             'Pipa Baru (Lokal)': this.layers.pipeGroupNew,
             'Tampilkan Polygon': this.layers.polygonGroup,
@@ -418,6 +429,10 @@ const MapManager = {
             this.loadAllLayers();
         }, this.config.debounceDelay));
 
+        // Per-layer "guards" in MapAdminEditShared (movestart/popupclose) 
+        // will handle cancelling edit mode for polygons. 
+        // No need for a broad movestart listener here that might conflict.
+
         // ✅ FIX: Add layer control event handlers
         this.layers.map.on('overlayadd overlayremove', (e) => {
             this._handleOverlayChange(e);
@@ -495,6 +510,16 @@ const MapManager = {
     _handlePmCreate(e) {
         if (e.layer instanceof L.Marker) {
             this._handleNewMarkerCreation(e.layer);
+            setTimeout(() => {
+                if (this.layers.map.pm && typeof this.layers.map.pm.disableDraw === 'function') {
+                    this.layers.map.pm.disableDraw();
+                }
+                if (this.layers.map?.getContainer) {
+                    const container = this.layers.map.getContainer();
+                    container.focus?.();
+                    container.style.cursor = 'crosshair';
+                }
+            }, 10);
         } else if (e.layer instanceof L.Polyline && !(e.layer instanceof L.Polygon)) {
             this._handleNewPipeCreation(e.layer);
         } else if (e.layer instanceof L.Polygon) {
@@ -523,7 +548,11 @@ const MapManager = {
         marker.setIcon(markerIcon);
 
         // Masukkan ke group marker baru
+        console.log("🆕 Adding new marker to markerGroupNew");
+        console.log("🆕 markerGroupNew exists:", !!this.layers.markerGroupNew);
         this.layers.markerGroupNew.addLayer(marker);
+        console.log("🆕 After add, markerGroupNew has layer:", this.layers.markerGroupNew.hasLayer(marker));
+        console.log("🆕 markerGroupNew layer count:", this.layers.markerGroupNew.getLayers().length);
         if (marker.pm) marker.pm.disable();
 
         // Buat pilihan tipe marker dari colorMap (acc/reservoir/tank/valve)

@@ -54,6 +54,9 @@
             preferCanvas: true,
             closePopupOnClick: false
         });
+        if (ctx.layers.map.getContainer) {
+            ctx.layers.map.getContainer().setAttribute('tabindex', '0');
+        }
 
         ctx.layers.map.createPane('polygonPane').style.zIndex = 400;
         ctx.layers.map.createPane('pipaPane').style.zIndex = 500;
@@ -78,7 +81,7 @@
 
         if (includeNewPipeLayer && ctx.state.layerVisibility.newPipes && ctx.layers.pipeGroupNew) ctx.layers.map.addLayer(ctx.layers.pipeGroupNew);
         if (includeNewPolygonLayer && ctx.state.layerVisibility.newPolygons && ctx.layers.polygonGroupNew) ctx.layers.map.addLayer(ctx.layers.polygonGroupNew);
-        if (includeNewMarkerLayer && ctx.state.markerGroupNew) ctx.layers.map.addLayer(ctx.state.markerGroupNew);
+        if (includeNewMarkerLayer && ctx.layers.markerGroupNew) ctx.layers.map.addLayer(ctx.layers.markerGroupNew);
     }
 
     function setupBasicLayerControl(ctx) {

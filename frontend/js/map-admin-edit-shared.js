@@ -47,12 +47,27 @@
         },
 
         _removeLayerByType(type, id, layer) {
+            console.log("🗑️ _removeLayerByType:", { type, id, layerExists: !!layer });
             if (!layer) return;
 
             if (type === "srpolygon") {
-                if (id === "new") this.layers.polygonGroupNew.removeLayer(layer);
-                else if (this.layers.polygonGroup?.hasLayer?.(layer)) this.layers.polygonGroup.removeLayer(layer);
-                else if (this.layers.map?.hasLayer?.(layer)) this.layers.map.removeLayer(layer);
+                if (id === "new") {
+                    this.layers.polygonGroupNew.removeLayer(layer);
+                } else if (this.layers.polygonGroup?.hasLayer?.(layer)) {
+                    this.layers.polygonGroup.removeLayer(layer);
+                } else if (this.layers.map?.hasLayer?.(layer)) {
+                    this.layers.map.removeLayer(layer);
+                }
+
+                if (this.layers.polyGeometry?.hasLayer?.(layer)) {
+                    this.layers.polyGeometry.removeLayer(layer);
+                }
+                if (this.layers.geometryLayer?.hasLayer?.(layer)) {
+                    this.layers.geometryLayer.removeLayer(layer);
+                }
+                if (typeof layer.remove === 'function') {
+                    layer.remove();
+                }
                 return;
             }
 
@@ -63,8 +78,47 @@
             }
 
             if (type === "marker") {
-                if (id === "new") this.state.markerGroupNew.removeLayer(layer);
-                else this.layers.markerGroup.removeLayer(layer);
+                if (id === "new") {
+                    console.log("🗑️ Removing new marker");
+                    const markerGroup = this.layers.markerGroupNew;
+                    markerGroup?.removeLayer(layer);
+                    if (this.layers.map?.hasLayer?.(layer)) {
+                        console.log("🗑️ Also removing from map");
+                        this.layers.map.removeLayer(layer);
+                    }
+                    if (typeof layer.remove === 'function') {
+                        console.log("🗑️ Removing layer directly");
+                        layer.remove();
+                    }
+                } else {
+                    if (this.layers.markerGroup?.hasLayer?.(layer)) {
+                        this.layers.markerGroup.removeLayer(layer);
+                    } else if (this.layers.markerGroup) {
+                        this.layers.markerGroup.eachLayer(child => {
+                            if (child instanceof L.Marker && child._markerId == id) {
+                                console.log("🗑️ Removing matching marker by id from cluster group");
+                                this.layers.markerGroup.removeLayer(child);
+                            }
+                        });
+                    }
+
+                    if (this.layers.map?.hasLayer?.(layer)) {
+                        console.log("🗑️ Removing saved marker from map");
+                        this.layers.map.removeLayer(layer);
+                    }
+
+                    if (typeof layer.remove === 'function') {
+                        console.log("🗑️ Removing saved marker directly");
+                        layer.remove();
+                    }
+
+                    if (typeof this.layers.markerGroup?.refreshClusters === 'function') {
+                        this.layers.markerGroup.refreshClusters();
+                    }
+                    if (typeof this.layers.markerGroup?.redraw === 'function') {
+                        this.layers.markerGroup.redraw();
+                    }
+                }
             }
         },
 
@@ -147,6 +201,23 @@
             }));
         },
 
+        async _syncLinkedPipes(marker) {
+            const updates = this._collectLinkedPipeUpdates(marker);
+            if (!updates.length) return false;
+
+            let needsReload = false;
+            for (const { line, payload } of updates) {
+                try {
+                    await this.updatePipa(line._pipeId, line, payload, { silent: true, reload: false });
+                } catch (err) {
+                    console.error("Failed to sync linked pipe:", line._pipeId, err);
+                    needsReload = true; // Force reload if any update fails
+                }
+            }
+
+            return needsReload;
+        },
+
         _debounceReloadPipes() {
             if (this._reloadPipesTimeout) {
                 clearTimeout(this._reloadPipesTimeout);
@@ -169,6 +240,20 @@
                 }
                 this._reloadMarkersTimeout = null;
             }, 100); // 100ms debounce
+        },
+
+        _debounceReloadPolygons() {
+            if (this._reloadPolygonsTimeout) {
+                clearTimeout(this._reloadPolygonsTimeout);
+            }
+            this._reloadPolygonsTimeout = setTimeout(() => {
+                if (this.layers.map) {
+                    const b = this.layers.map.getBounds();
+                    const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(",");
+                    this.loadPolygon(bbox);
+                }
+                this._reloadPolygonsTimeout = null;
+            }, 150);
         },
 
         _renderMarkerPopupContent(d) {
@@ -259,6 +344,7 @@
                     <div class="d-flex gap-1 mt-3">
                         <button class="btn btn-sm btn-success flex-fill btn-save" data-type="srpolygon" data-id="${this._escapeHtml(d.id)}">💾 Simpan</button>
                         <button class="btn btn-sm btn-primary flex-fill btn-edit" data-type="srpolygon" data-id="${this._escapeHtml(d.id)}">✏️ Edit</button>
+                        <button class="btn btn-sm btn-secondary flex-fill btn-cancel" data-type="srpolygon" data-id="${this._escapeHtml(d.id)}">❌ Batal</button>
                         <button class="btn btn-sm btn-danger flex-fill btn-hapus" data-type="srpolygon" data-id="${this._escapeHtml(d.id)}">🗑️ Hapus</button>
                     </div>
                 </div>`;
@@ -440,12 +526,7 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || "Gagal menyimpan polygon!");
 
-                polygon._polygonId = data.ogr_fid;
-                polygon._nosamw = nosamwNew;
-                polygon.lsval = payload.luas;
-                this._upsertLayerIndex("srpolygon", data.ogr_fid, polygon);
-
-                this.showToast("Polygon berhasil disimpan!", "success");
+                // Don't modify polygon directly here if we want _handleSavePolygon to manage the state
                 return data;
             } catch (err) {
                 this._showError("Gagal menyimpan polygon!", err);
@@ -484,22 +565,35 @@
 
         _findMarkerById(id) {
             const key = String(id);
+            console.log("🔍 _findMarkerById for id:", id);
+
             if (this.state.markerLayerIndex?.has(key)) {
+                console.log("🔍 Found in index");
                 return this.state.markerLayerIndex.get(key);
             }
 
             let found = null;
 
             this.layers.markerGroup.eachLayer(layer => {
-                if (!found && layer instanceof L.Marker && layer._markerId == id) found = layer;
+                if (!found && layer instanceof L.Marker && layer._markerId == id) {
+                    console.log("🔍 Found in main group");
+                    found = layer;
+                }
             });
 
             if (!found) {
-                this.state.markerGroupNew.eachLayer(layer => {
-                    if (!found && layer instanceof L.Marker && layer._markerId == id) found = layer;
+                const markerNewGroup = this.layers.markerGroupNew;
+                console.log("🔍 Checking new marker group:", !!markerNewGroup);
+                markerNewGroup?.eachLayer(layer => {
+                    console.log("🔍 Checking layer _markerId:", layer._markerId, "vs id:", id);
+                    if (!found && layer instanceof L.Marker && layer._markerId == id) {
+                        console.log("🔍 Found in new group!");
+                        found = layer;
+                    }
                 });
             }
 
+            console.log("🔍 Final result - found:", !!found);
             if (found && id !== "new") this._upsertLayerIndex("marker", id, found);
             return found;
         },
@@ -524,6 +618,24 @@
 
             if (found && id !== "new") this._upsertLayerIndex("srpolygon", id, found);
             return found;
+        },
+
+        _getLayerFromActivePopup(type, id) {
+            const activePopup = this.layers.map?._popup;
+            if (activePopup && activePopup._source) {
+                const src = activePopup._source;
+                const srcId = src._polygonId || src._markerId || src._pipeId;
+                
+                const matchType = 
+                    (type === 'srpolygon' && src instanceof L.Polygon) ||
+                    (type === 'marker' && src instanceof L.Marker) ||
+                    (type === 'pipe' && src instanceof L.Polyline && !(src instanceof L.Polygon));
+
+                if (String(srcId) === String(id) && matchType) {
+                    return src;
+                }
+            }
+            return null;
         },
 
         async _handleSave(button) {
@@ -575,24 +687,45 @@
             try {
                 if (!id || id === "new") {
                     const saved = await this.saveMarker(payload);
-                    marker._markerId = saved.ogr_fid;
+                    const newId = saved.ogr_fid || saved.id;
+                    marker._markerId = newId;
 
+                    // Update marker properties berdasarkan tipe
+                    marker._originalTipe = tipe.toLowerCase();
+                    marker.featureData = {
+                        ...marker.featureData,
+                        ...payload,
+                        id: newId,
+                        tipe: tipe.toLowerCase()
+                    };
+
+                    // Update marker icon sesuai tipe
+                    const normalIcon = this._getMarkerNormalIcon(tipe.toLowerCase());
+                    marker.setIcon(normalIcon);
+
+                    // Pindahkan dari new group ke main group
                     this.layers.markerGroupNew.removeLayer(marker);
                     this.layers.markerGroup.addLayer(marker);
-                    this._upsertLayerIndex("marker", saved.ogr_fid, marker);
+                    this._upsertLayerIndex("marker", newId, marker);
                 } else {
                     await this.updateMarker(id, marker, payload, { reload: false });
+                    // Update icon untuk marker existing jika tipe berubah
+                    const normalIcon = this._getMarkerNormalIcon(tipe.toLowerCase());
+                    marker.setIcon(normalIcon);
+                    marker._originalTipe = tipe.toLowerCase();
                 }
 
                 marker.featureData = { ...marker.featureData, ...payload };
                 this._clearMarkerEditState(marker);
                 marker.closePopup();
 
+                // Show success toast
+                this.showToast(`Marker ${id === "new" ? "baru" : id} berhasil disimpan`, "success");
+
                 const needsPipeReload = await this._syncLinkedPipes(marker);
 
-                if (!needsPipeReload && id && id !== "new" && this.layers.map) {
-                    this._debounceReloadMarkers();
-                } else if (id && id !== "new" && this.layers.map) {
+                // Reload markers untuk update visual - untuk marker baru maupun existing
+                if (this.layers.map) {
                     this._debounceReloadMarkers();
                 }
             } catch (err) {
@@ -612,20 +745,44 @@
             try {
                 if (!id || id === "new") {
                     const savedPolygon = await this.savePolygon(id, polygon, { coords, nosamw, nosambckup: nosamw, luas });
-                    polygon._polygonId = savedPolygon.ogr_fid;
+                    const newId = savedPolygon.ogr_fid;
+                    
+                    polygon._polygonId = newId;
+                    polygon.featureData = { ...(polygon.featureData || {}), id: newId, nosamw, luas_hitung: luas };
+                    
                     this.layers.polygonGroupNew.removeLayer(polygon);
                     this.layers.polygonGroup.addLayer(polygon);
-                    this._upsertLayerIndex("srpolygon", savedPolygon.ogr_fid, polygon);
+                    this._upsertLayerIndex("srpolygon", newId, polygon);
                     polygon.setStyle({ color: "blue", dashArray: null, fillOpacity: 0.4 });
                 } else {
                     await this.updatePolygon(id, polygon, { coords, nosamw, nosambckup: polygon._backup || '', luas });
+                    polygon.featureData = { ...(polygon.featureData || {}), nosamw, luas_hitung: luas };
                     polygon.setStyle({ color: "blue", dashArray: null, fillOpacity: 0.4 });
                 }
 
-                this._clearShapeEditState(polygon);
+                // IMPORTANT: Cleanup edit state and guards AFTER successful save
+                if (typeof polygon._polygonRestoreFn === 'function') {
+                    // Detach guards first so they don't trigger restore (which would revert geometry)
+                    this._detachPolygonEditGuards(polygon);
+                }
+
+                if (polygon.pm) polygon.pm.disable();
                 this._setPolygonEditingVisual(polygon, false);
+                delete polygon._backupLatLngs;
+                delete polygon._origLatLngs;
+                delete polygon._isEditing;
+                
+                // Clear defer flag
+                this.state._deferPolygonReload = false;
+                
                 polygon.closePopup();
                 this._showBootstrapToast("saveToast");
+                
+                // Refresh detail and popup content
+                if (typeof this._loadPolygonDetail === 'function') {
+                    await this._loadPolygonDetail(polygon);
+                    polygon.setPopupContent(this._renderPolygonPopupContent(polygon.featureData));
+                }
             } catch (err) {
                 console.error("Save SRPolygon error:", err);
             }
@@ -679,9 +836,28 @@
         _handleEdit(button) {
             const type = button.dataset.type;
             const id = button.dataset.id;
-            const layer = this._resolveLayer(type, id);
+            // STRATEGI BARU: Ambil layer langsung dari popup yang sedang terbuka
+            // Ini adalah cara paling akurat untuk mendapatkan instance yang diklik user
+            let layer = this._getLayerFromActivePopup(type, id);
+            
+            // Fallback ke pencarian biasa jika popup tidak ditemukan
+            if (!layer) {
+                layer = this._resolveLayer(type, id);
+            }
 
             if (!layer) return;
+
+            // Bersihkan total state lama jika ada (mencegah hang)
+            if (layer._isEditing || (layer.pm && typeof layer.pm.enabled === 'function' && layer.pm.enabled()) || layer._backupLatLngs) {
+                console.log('ℹ️ Resetting inconsistent edit state for layer', id);
+                try { if (layer.pm && typeof layer.pm.disable === 'function') layer.pm.disable(); } catch (e) {}
+                this._setPolygonEditingVisual(layer, false);
+                this._detachPolygonEditGuards(layer);
+                delete layer._isEditing;
+                delete layer._backupLatLngs;
+                delete layer._origLatLngs;
+                delete layer._isRestoring;
+            }
 
             if (layer instanceof L.Marker) {
                 layer._backupLatLng = layer.getLatLng();
@@ -767,30 +943,243 @@
                     layer.on('drag', layer._dragHandler);
                 }
             } else if (typeof layer.getLatLngs === 'function') {
-                layer._backupLatLngs = this._cloneLatLngs(layer.getLatLngs());
+                const cloned = this._cloneLatLngs(layer.getLatLngs());
+                layer._backupLatLngs = cloned;
+                // persist an original copy so cancel still works if popupclose already cleared _backupLatLngs
+                if (!layer._origLatLngs) layer._origLatLngs = this._cloneLatLngs(cloned);
             }
 
+           // ... existing code ...
             if (!(layer instanceof L.Marker) && layer.pm) layer.pm.enable();
 
             if (type === "marker") {
                 layer.setIcon(this._getMarkerEditIcon());
                 layer.closePopup();
+            } else if (type === "pipe") {
+                console.log('✏️ Entering pipe edit mode for id:', id);
+                if (this.layers.map) this.layers.map.closePopup();
+                if (typeof layer.closePopup === 'function') layer.closePopup();
             } else if (type === "srpolygon") {
-                this._setPolygonEditingVisual(layer, true);
-                layer.closePopup();
+                console.log('✏️ Entering polygon edit mode for id:', layer?._polygonId, 'backupExists:', !!layer?._backupLatLngs, 'pm:', !!layer.pm);
+
+                // Force closure of all popups on map to avoid "hang"
+                if (this.layers.map) this.layers.map.closePopup();
+                if (typeof layer.closePopup === 'function') layer.closePopup();
+
+                // Use a short delay to ensure Leaflet has processed the popup closure
+                setTimeout(() => {
+                    try {
+                        if (layer.pm && typeof layer.pm.enable === 'function') {
+                            layer.pm.enable();
+                            console.log('✅ PM enabled on polygon after delay');
+                        }
+                    } catch (err) {
+                        console.warn('Failed to enable PM on polygon:', err);
+                    }
+                    try {
+                        if (typeof layer.bringToFront === 'function') layer.bringToFront();
+                        if (layer.getElement && layer.getElement()) {
+                            layer.getElement().style.pointerEvents = 'auto';
+                        }
+                    } catch (err) { }
+                    // Attach per-polygon guards so pan/popupclose restore backup reliably
+                    try { this._attachPolygonEditGuards(layer); } catch (e) { console.warn('Failed to attach polygon guards', e); }
+                }, 50);
             }
+        },
+
+        _attachPolygonEditGuards(layer) {
+            if (!layer || !this.layers || !this.layers.map) return;
+
+            const restoreAndCleanup = () => {
+                // Use a local flag to prevent recursion if restoreAndCleanup is called multiple times
+                if (layer._isRestoring) return;
+                layer._isRestoring = true;
+
+                console.log('🔧 restoreAndCleanup for polygon', layer._polygonId);
+                
+                // If currently moving, don't restore to avoid interrupting edit
+                if (this.state._isMoving) {
+                    console.log('🔧 Skipping restore during move');
+                    layer._isRestoring = false;
+                    return;
+                }
+                
+                // Detach all guards immediately
+                this._detachPolygonEditGuards(layer);
+
+                try { 
+                    if (layer.pm && typeof layer.pm.disable === 'function') {
+                        layer.pm.disable(); 
+                    }
+                } catch (e) {}
+
+                // CRITICAL: Check if we actually need to restore. 
+                // If the user already SAVED, we don't want to restore old coordinates.
+                // But if they PAN or CANCEL, we do.
+                if (layer._isEditing) {
+                    try {
+                        const toRestore = (layer._backupLatLngs && typeof layer.setLatLngs === 'function')
+                            ? layer._backupLatLngs
+                            : (layer._origLatLngs && typeof layer.setLatLngs === 'function' ? layer._origLatLngs : null);
+
+                        if (toRestore && typeof layer.setLatLngs === 'function') {
+                            layer.setLatLngs(toRestore);
+                            console.log('🔧 restored polygon latlngs');
+                        }
+                    } catch (e) {
+                        console.warn('Failed to restore polygon backup', e);
+                    }
+                }
+
+                try { this._setPolygonEditingVisual(layer, false); } catch (e) {}
+                
+                // Ensure popup is closed and state is cleaned
+                try {
+                    if (typeof layer.closePopup === 'function') layer.closePopup();
+                } catch (e) {}
+
+                delete layer._backupLatLngs;
+                delete layer._origLatLngs;
+                delete layer._isEditing;
+                delete layer._isRestoring;
+
+                // Clear defer flag and reload polygons if needed
+                this.state._deferPolygonReload = false;
+                try { 
+                    const b = this.layers.map.getBounds();
+                    const bbox = [b.getSouth(), b.getWest(), b.getNorth(), b.getEast()].join(",");
+                    this.loadPolygon(bbox);
+                } catch (e) { /* ignore */ }
+
+                // Ensure interaction is restored
+                try {
+                    if (layer.getElement && layer.getElement()) {
+                        layer.getElement().style.pointerEvents = 'auto';
+                        layer.getElement().style.cursor = 'pointer';
+                    }
+                } catch (e) {}
+            };
+
+            // store references so we can remove them later
+            layer._polygonRestoreFn = restoreAndCleanup;
+
+            layer._pmPopupCloseHandler = (e) => {
+                if (e && e.popup && e.popup._source === layer) {
+                    console.log('🔧 Guard: popupclose detected for polygon', layer._polygonId);
+                    // If currently moving, don't restore
+                    if (!this.state._isMoving) {
+                        restoreAndCleanup();
+                    }
+                }
+            };
+
+            layer._pmMoveStartHandler = () => {
+                console.log('🔧 Guard: movestart detected while editing polygon', layer._polygonId);
+                // Set moving flag to prevent restore during pan
+                this.state._isMoving = true;
+                // Defer reload during move
+                this.state._deferPolygonReload = true;
+            };
+
+            layer._pmRemoveHandler = () => {
+                console.log('🔧 Guard: layer removed while editing polygon', layer._polygonId);
+                // If currently moving, don't restore
+                if (!this.state._isMoving) {
+                    restoreAndCleanup();
+                }
+            };
+
+            layer._pmMoveEndHandler = () => {
+                // Clear moving flag
+                this.state._isMoving = false;
+                // Clear defer flag
+                this.state._deferPolygonReload = false;
+                if (layer.getElement && layer.getElement()) {
+                    layer.getElement().style.pointerEvents = 'auto';
+                }
+            };
+
+            this.layers.map.on('popupclose', layer._pmPopupCloseHandler);
+            this.layers.map.on('movestart', layer._pmMoveStartHandler);
+            this.layers.map.on('moveend', layer._pmMoveEndHandler);
+            layer.on('remove', layer._pmRemoveHandler);
+        },
+
+        _detachPolygonEditGuards(layer) {
+            if (!layer || !this.layers || !this.layers.map) return;
+            try {
+                if (layer._pmPopupCloseHandler) {
+                    this.layers.map.off('popupclose', layer._pmPopupCloseHandler);
+                    delete layer._pmPopupCloseHandler;
+                }
+            } catch (e) {}
+            try {
+                if (layer._pmMoveStartHandler) {
+                    this.layers.map.off('movestart', layer._pmMoveStartHandler);
+                    delete layer._pmMoveStartHandler;
+                }
+            } catch (e) {}
+            try {
+                if (layer._pmMoveEndHandler) {
+                    this.layers.map.off('moveend', layer._pmMoveEndHandler);
+                    delete layer._pmMoveEndHandler;
+                }
+            } catch (e) {}
+            try {
+                if (layer._pmRemoveHandler) {
+                    layer.off('remove', layer._pmRemoveHandler);
+                    delete layer._pmRemoveHandler;
+                }
+            } catch (e) {}
+            if (layer._polygonRestoreFn) delete layer._polygonRestoreFn;
         },
 
         _handleCancel(button) {
             const type = button.dataset.type;
             const id = button.dataset.id;
-            const layer = this._resolveLayer(type, id);
+            console.log("🔄 _handleCancel:", { type, id });
 
-            if (!layer) return;
+            // Gunakan deteksi dari popup aktif
+            let layer = this._getLayerFromActivePopup(type, id);
+            
+            if (!layer) {
+                layer = this._resolveLayer(type, id);
+            }
+
+            if (!layer) {
+                // Fallback for new polygon: try to find in polygonGroupNew
+                if (type === 'srpolygon' && id === 'new' && this.layers.polygonGroupNew) {
+                    this.layers.polygonGroupNew.eachLayer(l => {
+                        if (!layer && l._polygonId === 'new') layer = l;
+                    });
+                }
+            }
+
+            if (!layer) {
+                console.log("❌ No layer found for cancel");
+                return;
+            }
 
             if (id === "new") {
+                console.log("🗑️ Removing new layer:", type);
                 this._removeLayerByType(type, id, layer);
+                // Close popup for new markers before returning
+                if (type === "marker") {
+                    console.log("🗑️ Closing popup for new marker");
+                    layer.closePopup();
+                }
                 return;
+            }
+
+            // For polygons, prefer calling the stored restore function first
+            if (type === 'srpolygon' && typeof layer._polygonRestoreFn === 'function') {
+                try { 
+                    layer._polygonRestoreFn(); 
+                    return; // restoreAndCleanup handles everything for polygons
+                } catch (e) { 
+                    console.warn('Error running polygon restoreFn', e); 
+                }
             }
 
             if (layer.pm) layer.pm.disable();
@@ -807,7 +1196,12 @@
                 layer.setLatLng(layer._backupLatLng);
             }
 
-            if (type === "srpolygon") this._setPolygonEditingVisual(layer, false);
+            if (type === "srpolygon") {
+                this._setPolygonEditingVisual(layer, false);
+                try { if (layer.pm) layer.pm.disable(); } catch (e) {}
+                // Detach guards now; actual restore happens below in the generic restore block
+                try { this._detachPolygonEditGuards(layer); } catch (e) {}
+            }
 
             if (type === "marker" && layer._linkedPipes && layer._linkedPipes.length) {
                 for (const link of layer._linkedPipes) {
@@ -844,6 +1238,13 @@
                 layer.setLatLngs(layer._backupLatLngs);
             }
 
+            // Ensure polygon-specific cleanup after restoring coords
+            if (type === "srpolygon") {
+                try { this._detachPolygonEditGuards(layer); } catch (e) {}
+                if (layer._backupLatLngs) delete layer._backupLatLngs;
+                if (layer._isEditing) delete layer._isEditing;
+            }
+
             if (type === "marker") {
                 this._clearMarkerEditState(layer);
             } else {
@@ -867,21 +1268,19 @@
             try {
                 if (id === "new") {
                     this._removeLayerByType(type, id, layer);
-                } else if (type === "srpolygon") {
-                    await this.deletePolygon(id);
-                    this._removeLayerByType(type, id, layer);
-                } else if (type === "pipe") {
-                    await this.deletePipa(id);
-                    this._removeLayerByType(type, id, layer);
-                    this.showToast("Pipa berhasil dihapus", "success");
                 } else if (type === "marker") {
                     await this.deleteMarker(id);
-                    this._removeLayerByType(type, id, layer);
+                    this._cleanupLayerAfterDelete(type, id, layer);
                     this.showToast("Marker berhasil dihapus", "success");
-                }
-
-                if (type === "srpolygon" && id !== "new") {
-                    this.showToast("Polygon berhasil dihapus!", "success");
+                    if (this.layers.markerGroup?.refreshClusters) this.layers.markerGroup.refreshClusters();
+                } else if (type === "srpolygon") {
+                    await this.deletePolygon(id);
+                    this._cleanupLayerAfterDelete(type, id, layer);
+                    this.showToast("Polygon berhasil dihapus", "success");
+                } else if (type === "pipe") {
+                    await this.deletePipa(id);
+                    this._cleanupLayerAfterDelete(type, id, layer);
+                    this.showToast("Pipa berhasil dihapus", "success");
                 }
 
                 this._showBootstrapToast("deleteToast");
@@ -889,7 +1288,21 @@
                 console.error(`Delete ${type} error:`, err);
                 this._showError(`Gagal menghapus ${type}`, err);
             }
+        },
+
+        // Helper baru untuk menyatukan behavior pembersihan setelah hapus
+        _cleanupLayerAfterDelete(type, id, layer) {
+            if (this.layers.map) this.layers.map.closePopup();
+            if (typeof layer.closePopup === 'function') layer.closePopup();
+            if (typeof layer.unbindPopup === 'function') layer.unbindPopup();
+            
+            this._removeLayerByType(type, id, layer);
+            this._removeLayerIndex(type, id);
+            
+            if (this.layers.map?.hasLayer?.(layer)) this.layers.map.removeLayer(layer);
+            if (typeof layer.remove === 'function') layer.remove();
         }
+
     };
 
     global.MapAdminEditShared = {
@@ -907,6 +1320,10 @@
             if (target._reloadMarkersTimeout) {
                 clearTimeout(target._reloadMarkersTimeout);
                 target._reloadMarkersTimeout = null;
+            }
+            if (target._reloadPolygonsTimeout) {
+                clearTimeout(target._reloadPolygonsTimeout);
+                target._reloadPolygonsTimeout = null;
             }
         }
     };
