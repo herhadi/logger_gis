@@ -963,14 +963,18 @@ async function getStatusLogger() {
       ? (now - new Date(row.jam)) / (1000 * 60 * 60)
       : Infinity;
 
-    const delay = row.jam
-      ? Math.floor((now - new Date(row.jam)) / (1000 * 60))
-      : '-';
+    // const delay = row.jam
+    //   ? Math.floor((now - new Date(row.jam)) / (1000 * 60))
+    //   : '-';
 
     if (selisihJam > 1) {
-      offline.push(
+      // offline.push(
+      //   `🔴 ${offline.length + 1}. ${row.nama} (${row.idmet})\n` +
+      //   `   Data terakhir: ${formatWaktu(row.jam)} (${delay} menit lalu)`
+      // );
+       offline.push(
         `🔴 ${offline.length + 1}. ${row.nama} (${row.idmet})\n` +
-        `   Data terakhir: ${formatWaktu(row.jam)} (${delay} menit lalu)`
+        `   Data terakhir: ${formatWaktu(row.jam)}`
       );
     } else {
       onlineCount++;
@@ -1037,7 +1041,7 @@ async function cekLoggerDanNotif() {
 
 // === API TESTING TELEGRAM ===
 app.get('/api/test-telegram', async (req, res) => {
-  await kirimTelegram(process.env.CHAT_ID, "✅ Test notif dari server Render berhasil!");
+  await kirimTelegram(process.env.ADMIN_ID, "✅ Test notif dari server Render berhasil!");
   res.send("OK");
 });
 
@@ -1122,7 +1126,7 @@ app.get('/api/cron', async (req, res) => {
   } catch (err) {
     console.error("❌ Cron error:", err.message);
 
-    await kirimTelegram(process.env.CHAT_ID,
+    await kirimTelegram(process.env.ADMIN_ID,
       `🚨 CRON ERROR\n${err.message}`
     );
   }
