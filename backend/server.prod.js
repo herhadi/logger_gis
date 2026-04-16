@@ -133,8 +133,8 @@ app.get('/api/pipa', async (req, res) => {
     const zoom = Number(req.query.zoom);
     const simplifyTolerance =
       Number.isFinite(zoom) && zoom < 14 ? 0.0002 :
-      Number.isFinite(zoom) && zoom < 16 ? 0.00008 :
-      0;
+        Number.isFinite(zoom) && zoom < 16 ? 0.00008 :
+          0;
 
     let sql = `
       SELECT 
@@ -364,8 +364,8 @@ app.get('/api/polygon', async (req, res) => {
     const zoom = Number(req.query.zoom);
     const simplifyTolerance =
       Number.isFinite(zoom) && zoom < 15 ? 0.00015 :
-      Number.isFinite(zoom) && zoom < 17 ? 0.00005 :
-      0;
+        Number.isFinite(zoom) && zoom < 17 ? 0.00005 :
+          0;
 
     let sql = `
       SELECT 
@@ -745,7 +745,7 @@ app.post('/api/marker/create', requireLogin, async (req, res) => {
       if (idx === 0) return `ST_GeomFromText($1, 4326)`; // shape column needs ST_GeomFromText
       return `$${idx + 1}`;
     }).join(', ');
-    
+
     const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) 
                  VALUES (${placeholders}) 
                  RETURNING ogr_fid`;
@@ -946,28 +946,45 @@ app.post('/webhook', async (req, res) => {
 // ==========================================
 async function getStatusLogger() {
   const query = `
-    SELECT l.nama, ll.jam 
+    SELECT l.idmet, l.nama, ll.jam 
     FROM logger_lokasi l
     LEFT JOIN logger_latest ll ON l.idmet = ll.idmet
     WHERE l.skip_monitor = FALSE
   `;
+
   const { rows } = await dbPostgres.query(query);
+
   const now = new Date();
   let offline = [];
   let onlineCount = 0;
 
-  rows.forEach(row => {
-    const selisihJam = row.jam ? (now - new Date(row.jam)) / (1000 * 60 * 60) : Infinity;
+  rows.forEach((row, index) => {
+    const selisihJam = row.jam
+      ? (now - new Date(row.jam)) / (1000 * 60 * 60)
+      : Infinity;
+
+    const delay = row.jam
+      ? Math.floor((now - new Date(row.jam)) / (1000 * 60))
+      : '-';
+
     if (selisihJam > 1) {
-      offline.push(`🔴 ${row.nama} (${formatWaktu(row.jam)})`);
+      offline.push(
+        `🔴 ${offline.length + 1}. ${row.nama} (${row.idmet})\n` +
+        `   Data terakhir: ${formatWaktu(row.jam)} (${delay} menit lalu)`
+      );
     } else {
       onlineCount++;
     }
   });
 
-  return `📊 *Status Logger*\n⏱ ${formatWaktu(now)}\n\n` +
-    (offline.length ? `⚠️ *OFFLINE*:\n${offline.join('\n')}\n\n` : `✅ Semua Online\n`) +
-    `🟢 *ONLINE*: ${onlineCount}`;
+  return (
+    `📊 *Status Logger Saat Ini*\n` +
+    `⏱ ${formatWaktu(now)}\n\n` +
+    (offline.length
+      ? `⚠️ *OFFLINE (>1 jam)*\n\n${offline.join('\n\n')}\n\n`
+      : `✅ Semua Online\n\n`) +
+    `🟢 *ONLINE*: ${onlineCount} logger`
+  );
 }
 
 async function cekLoggerDanNotif() {
@@ -1019,12 +1036,12 @@ cron.schedule('*/10 * * * *', () => {
 });
 
 // === API TESTING TELEGRAM ===
-app.get('/test-telegram', async (req, res) => {
+app.get('/api/test-telegram', async (req, res) => {
   await kirimTelegram(process.env.CHAT_ID, "✅ Test notif dari server Render berhasil!");
   res.send("OK");
 });
 
-app.get('/test-monitor', async (req, res) => {
+app.get('/api/test-monitor', async (req, res) => {
   await cekLoggerDanNotif();
   res.send("Monitor executed");
 });
@@ -1090,6 +1107,11 @@ app.get('/api/delete-webhook', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+app.get('/api/health', (req, res) => {
+  res.send('OK');
+});
+
 
 // === STATIC FILES (PRODUCTION) ===
 app.use(express.static(path.join(__dirname, '../frontend')));
