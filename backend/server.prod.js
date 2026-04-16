@@ -1024,6 +1024,74 @@ app.get('/test-telegram', async (req, res) => {
   res.send("OK");
 });
 
+app.get('/test-monitor', async (req, res) => {
+  await cekLoggerDanNotif();
+  res.send("Monitor executed");
+});
+
+app.get('/api/set-webhook', async (req, res) => {
+  try {
+    const webhookUrl = `${process.env.BASE_URL}/webhook`;
+
+    const response = await fetch(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/setWebhook`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: webhookUrl })
+      }
+    );
+
+    const data = await response.json();
+
+    console.log("📡 Set webhook:", data);
+
+    res.json({
+      success: true,
+      webhook: webhookUrl,
+      telegram: data
+    });
+
+  } catch (err) {
+    console.error("❌ Set webhook error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/webhook-info', async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/getWebhookInfo`
+    );
+
+    const data = await response.json();
+
+    console.log("🔍 Webhook info:", data);
+
+    res.json(data);
+
+  } catch (err) {
+    console.error("❌ Get webhook error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/delete-webhook', async (req, res) => {
+  try {
+    const response = await fetch(
+      `https://api.telegram.org/bot${process.env.TELEGRAM_TOKEN}/deleteWebhook`
+    );
+
+    const data = await response.json();
+
+    res.json(data);
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// === STATIC FILES (PRODUCTION) ===
 app.use(express.static(path.join(__dirname, '../frontend')));
 // === Redirect root ke login.html ===
 app.get('/', (req, res) => {
