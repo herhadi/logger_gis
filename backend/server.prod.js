@@ -1031,9 +1031,9 @@ async function cekLoggerDanNotif() {
 // ==========================================
 // 4. CRON SCHEDULE
 // ==========================================
-cron.schedule('*/10 * * * *', () => {
-  cekLoggerDanNotif();
-});
+// cron.schedule('*/10 * * * *', () => {
+//   cekLoggerDanNotif();
+// }); // Dialihkan ke endpoint /api/cron dan hit menggunakan UptimeRobot
 
 // === API TESTING TELEGRAM ===
 app.get('/api/test-telegram', async (req, res) => {
@@ -1108,10 +1108,36 @@ app.get('/api/delete-webhook', async (req, res) => {
   }
 });
 
-app.get('/api/health', (req, res) => {
-  res.send('OK');
-});
+let lastRun = 0;
 
+// Endpoint untuk trigger cron manual (juga bisa untuk keep-alive)
+app.get('/api/cron', async (req, res) => {
+  const now = Date.now();
+
+  console.log("⏱️ Cron hit:", new Date());
+
+  // 👉 selalu jawab cepat (untuk keep-alive)
+  res.send("OK");
+
+  // 👉 jalankan logic tiap 10 menit saja
+  if (now - lastRun < 10 * 60 * 1000) {
+    console.log("⏭️ Skip, belum 10 menit");
+    return;
+  }
+
+  lastRun = now;
+
+  try {
+    console.log("🚀 Jalankan monitoring...");
+    await cekLoggerDanNotif();
+  } catch (err) {
+    console.error("❌ Cron error:", err.message);
+
+    await kirimTelegram(process.env.CHAT_ID,
+      `🚨 CRON ERROR\n${err.message}`
+    );
+  }
+});
 
 // === STATIC FILES (PRODUCTION) ===
 app.use(express.static(path.join(__dirname, '../frontend')));
