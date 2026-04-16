@@ -1111,19 +1111,22 @@ app.get('/api/delete-webhook', async (req, res) => {
 let lastRun = 0;
 
 // Endpoint untuk trigger cron manual (juga bisa untuk keep-alive)
+// dengan rate limit 10 menit sekali di UptimeRobot
 app.get('/api/cron', async (req, res) => {
-  const now = Date.now();
+  console.log("🚀 Cron jalan:", new Date());
 
-  console.log("⏱️ Cron hit:", new Date());
+  res.send("OK"); // response cepat
 
-  // 👉 selalu jawab cepat (untuk keep-alive)
-  res.send("OK");
+  try {
+    await cekLoggerDanNotif();
+  } catch (err) {
+    console.error("❌ Cron error:", err.message);
 
-  // 👉 jalankan logic tiap 10 menit saja
-  if (now - lastRun < 10 * 60 * 1000) {
-    console.log("⏭️ Skip, belum 10 menit");
-    return;
+    await kirimTelegram(process.env.CHAT_ID,
+      `🚨 CRON ERROR\n${err.message}`
+    );
   }
+});
 
   lastRun = now;
 
