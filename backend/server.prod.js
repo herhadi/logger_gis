@@ -1128,20 +1128,6 @@ app.get('/api/cron', async (req, res) => {
   }
 });
 
-  lastRun = now;
-
-  try {
-    console.log("🚀 Jalankan monitoring...");
-    await cekLoggerDanNotif();
-  } catch (err) {
-    console.error("❌ Cron error:", err.message);
-
-    await kirimTelegram(process.env.CHAT_ID,
-      `🚨 CRON ERROR\n${err.message}`
-    );
-  }
-});
-
 // === STATIC FILES (PRODUCTION) ===
 app.use(express.static(path.join(__dirname, '../frontend')));
 // === Redirect root ke login.html ===
