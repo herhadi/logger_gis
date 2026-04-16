@@ -6,6 +6,7 @@ node_modules/
 
 # Pengaturan editor (personal)
 .vscode/
+.sixth/
 
 # File sampah macOS
 .DS_Store

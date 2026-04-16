@@ -1,0 +1,178 @@
+/* ====== MAP ====== */
+#map {
+    height: 90vh;
+    width: 100%;
+    position: relative;
+}
+
+/* ====== CONTROL CONTAINER ====== */
+.leaflet-top.leaflet-left {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px;
+    pointer-events: none;
+}
+
+/* Semua control */
+.leaflet-top.leaflet-left > .leaflet-control {
+    pointer-events: auto;
+    margin: 0 !important;
+    background: #fff;
+    border-radius: 8px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    overflow: visible;
+    transition: all 0.2s ease;
+}
+
+/* Hover */
+.leaflet-top.leaflet-left > .leaflet-control:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    transform: translateY(-2px);
+}
+
+/* ====== ZOOM ====== */
+.leaflet-control-zoom a {
+    width: 34px;
+    height: 34px;
+    line-height: 34px;
+    font-size: 18px;
+}
+
+/* ====== GEOCODER ====== */
+.leaflet-control-geocoder {
+    display: flex !important;
+    align-items: center;
+    width: 34px;
+    height: 34px;
+    padding: 2px 4px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    position: relative;
+    overflow: visible !important;
+    transition: max-width 0.2s ease;
+    z-index: 1001;
+}
+
+.leaflet-control-geocoder:hover,
+.leaflet-control-geocoder:focus-within {
+    max-width: 280px;
+}
+
+/* icon */
+.leaflet-control-geocoder-icon {
+    width: 28px !important;
+    height: 28px !important;
+    margin: 0 !important;
+    background-size: 100% 100% !important;
+    transition: transform 0.2s ease;
+}
+
+.leaflet-control-geocoder-icon:hover {
+    transform: scale(1.1);
+}
+
+/* input */
+.leaflet-control-geocoder input {
+    flex: 1;
+    width: 0;
+    opacity: 0;
+    visibility: hidden;
+    padding: 0;
+    border: none;
+    background: #fff;
+    color: #000;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
+}
+
+.leaflet-control-geocoder:hover input,
+.leaflet-control-geocoder:focus-within input {
+    width: 220px;
+    opacity: 1;
+    visibility: visible;
+    padding: 6px 8px;
+}
+
+/* ====== RESULT ====== */
+.leaflet-control-geocoder-results,
+.leaflet-control-geocoder-alternatives {
+    max-height: 260px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    min-width: 220px;
+    width: 100%;
+}
+
+/* dropdown */
+.leaflet-control-geocoder .leaflet-control-geocoder-alternatives {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    width: 100%;
+    background: #fff !important;
+    border-top: 1px solid #ddd;
+    border-radius: 0 0 8px 8px;
+    z-index: 1000;
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.leaflet-control-geocoder-expanded .leaflet-control-geocoder-alternatives {
+    width: 100%;
+}
+
+/* ====== SCROLLBAR ====== */
+.leaflet-control-geocoder-results::-webkit-scrollbar {
+    width: 8px;
+}
+.leaflet-control-geocoder-results::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+/* ====== POPUP ====== */
+.leaflet-popup-content {
+    min-width: 260px;
+    font-size: 0.9rem;
+}
+
+/* ====== LEGEND ====== */
+.legend {
+    position: absolute;
+    bottom: 10px;
+    padding: 10px;
+    background: rgba(255,255,255,0.95);
+    border: 1px solid #ccc;
+    border-radius: 6px;
+    font-size: 12px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    line-height: 1.4;
+    display: inline-block;
+    width: auto;
+    max-width: 220px;
+}
+
+.legend h4,
+#legend h4 {
+    margin: 0 0 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+}
+
+.legend div,
+#legend div {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+}
+
+.legend-line,
+#legend .legend-line {
+    display: inline-block;
+    width: 22px;
+    height: 8px;
+    border-radius: 4px;
+    border: 1px solid #999;
+} 

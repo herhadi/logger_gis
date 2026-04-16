@@ -1,120 +1,37 @@
-#map {
-    height: 90vh;
-    width: 100%;
-}
+/* user.css */
 
-.status-dot {
-    display: inline-block;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    margin-right: 6px;
-}
+/* ====== TOGGLE BUTTON ====== */
+#legendToggleBtn {
+    position: fixed;
+    bottom: 20px;
+    left: 10px;
+    z-index: 1101;
 
-.green-dot {
-    background-color: #28a745;
-}
+    width: 30px;
+    height: 30px;
+    line-height: 28px;
 
-.red-dot {
-    background-color: #dc3545;
-}
-
-.yellow-dot {
-    background-color: #ffc107;
-}
-
-.gray-dot {
-    background-color: #6c757d;
-}
-
-.blinking {
-    animation: blink 1s infinite;
-}
-
-@keyframes blink {
-    0% {
-        opacity: 1;
-    }
-
-    50% {
-        opacity: 0.2;
-    }
-
-    100% {
-        opacity: 1;
-    }
-}
-
-.leaflet-marker-icon {
-    z-index: 500 !important;
-}
-
-.leaflet-polyline.jalur-pipa {
-    stroke: black;
-    stroke-width: 7;
-    stroke-linejoin: round;
-    stroke-linecap: round;
-}
-
-#markerTogglePanel {
-    position: absolute;
-    top: 10px;
-    right: 10px;
     background: white;
-    padding: 6px 10px;
-    border-radius: 6px;
-    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.4);
-    z-index: 1000;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+
+    font-size: 16px;
+    text-align: center;
+    cursor: pointer;
+
+    box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+    padding: 0;
+}
+
+/* hover biar lebih enak */
+#legendToggleBtn:hover {
+    background: #f5f5f5;
 }
 
 .legend {
-    position: absolute;
+    position: fixed;
     bottom: 10px;
-    left: 10px;
-    padding: 10px;
-    background: rgba(255, 255, 255, 0.95);
-    border: 1px solid #ccc;
-    font-size: 13px;
-    line-height: 1.5;
-    border-radius: 6px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-    z-index: 1000;
+    left: 50px;
+    display: block;
+    z-index: 1100;
 }
-
-.legend h4 {
-    margin: 0 0 6px;
-    font-size: 14px;
-}
-
-.legend-line {
-    display: inline-block;
-    width: 25px;
-    height: 6px;
-    margin-right: 8px;
-    vertical-align: middle;
-    border: 1px solid #333;
-}
-
-/* Lebar dan font popup yang responsif
-    .leaflet-popup-content-wrapper {
-      max-width: 320px !important;
-      min-width: 220px !important;
-      font-size: 16px !important;
-      line-height: 1.4 !important;
-      word-wrap: break-word !important;
-    }
-
-    .leaflet-popup-content {
-      margin: 10px 14px !important;
-    }
-
-    .leaflet-popup-tip {
-      width: 20px !important;
-      height: 15px !important;
-    }
-
-    /* Optional: untuk popup pointer sedikit lebih besar *
-    .leaflet-popup-tip-container {
-      width: 20px !important;
-      height: 15px !important;
-    } */

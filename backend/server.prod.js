@@ -1018,6 +1018,12 @@ cron.schedule('*/10 * * * *', () => {
   cekLoggerDanNotif();
 });
 
+// === API TESTING TELEGRAM ===
+app.get('/test-telegram', async (req, res) => {
+  await kirimTelegram(process.env.CHAT_ID, "✅ Test notif dari server Render berhasil!");
+  res.send("OK");
+});
+
 app.use(express.static(path.join(__dirname, '../frontend')));
 // === Redirect root ke login.html ===
 app.get('/', (req, res) => {

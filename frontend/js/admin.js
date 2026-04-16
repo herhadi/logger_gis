@@ -78,10 +78,13 @@ const MapManager = {
         this.state.isInitializing = true;
         // console.log('🔍 INIT - Initial state:', this.state.layerVisibility);
 
+        this._geoCache = new Map();
+
         this._setupBaseLayers();
         this._setupMap();
         this._setupControls();
         this._setupEventHandlers();
+        this._setupGeocoder();
 
         this.layers.map.whenReady(() => {
             // console.log('🗺️ Map is ready');
@@ -102,7 +105,6 @@ const MapManager = {
         });
     },
 
-
     _setupBaseLayers() {
         this.baseLayers = window.MapCoreShared.createBaseLayers();
     },
@@ -122,7 +124,6 @@ const MapManager = {
         this._setupGeomanControls();
         this._setupDrawControl();
         this._setupLayerControl();
-        this._setupGeocoder();
     },
 
     _setupGeomanControls() {
@@ -344,78 +345,6 @@ const MapManager = {
         });
     },
 
-    _setupGeocoder() {
-        const geoapifyGeocoder = {
-            geocode: (query, cb, context) => {
-                const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(query)}&limit=10&apiKey=${this.config.apiKey}`;
-
-                return fetch(url)
-                    .then(r => {
-                        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
-                        return r.json();
-                    })
-                    .then(data => {
-                        const results = (data.features || []).map(feature => {
-                            const prop = feature.properties;
-                            return {
-                                name: prop.formatted || [prop.street, prop.city, prop.country].filter(Boolean).join(', '),
-                                center: L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]),
-                                bbox: feature.bbox ? L.latLngBounds(
-                                    [feature.bbox[1], feature.bbox[0]],
-                                    [feature.bbox[3], feature.bbox[2]]
-                                ) : null,
-                                properties: prop
-                            };
-                        });
-
-                        // Pastikan selalu mengembalikan array, bahkan jika kosong
-                        return results || [];
-                    })
-                    .catch(err => {
-                        console.error("Geoapify error:", err);
-                        // Kembalikan array kosong jika error
-                        return [];
-                    })
-                    .then(results => {
-                        // Pastikan callback dipanggil dengan hasil yang valid
-                        if (typeof cb === "function") {
-                            cb.call(context || this, results);
-                        }
-                        return results;
-                    });
-            },
-
-            suggest: function (query, cb, context) {
-                return this.geocode(query, cb, context);
-            }
-        };
-
-        const geocoderControl = L.Control.geocoder({
-            geocoder: geoapifyGeocoder,
-            defaultMarkGeocode: false,
-            position: 'topleft',
-            placeholder: 'Cari lokasi...',
-            errorMessage: 'Lokasi tidak ditemukan',
-            showResultIcons: true,
-            collapsed: true,
-            // Tambahkan opsi untuk menangani error dengan lebih baik
-            showUniqueResult: true,
-            suggestTimeout: 250
-        });
-
-        geocoderControl.on('markgeocode', (e) => {
-            this._handleGeocodeResult(e.geocode);
-        });
-
-        // Handle errors pada geocoder
-        geocoderControl.on('error', (e) => {
-            console.error('Geocoder error:', e.error);
-            this.showToast('Gagal mencari lokasi', 'error');
-        });
-
-        geocoderControl.addTo(this.layers.map);
-    },
-
     _setupEventHandlers() {
         this.layers.map.on(L.Draw.Event.CREATED, (e) => this._handleDrawCreated(e));
         this.layers.map.on('draw:edited', (e) => this._handleDrawEdited(e));
@@ -456,24 +385,6 @@ const MapManager = {
     // ===============================
     // EVENT HANDLERS
     // ===============================
-    _handleGeocodeResult(geocode) {
-        // Clear existing markers
-        this.layers.map.eachLayer(layer => {
-            if (layer instanceof L.Marker) this.layers.map.removeLayer(layer);
-        });
-
-        if (geocode.bbox) {
-            this.layers.map.fitBounds(geocode.bbox, { padding: [50, 50] });
-        } else {
-            this.layers.map.setView(geocode.center, 15);
-        }
-
-        L.marker(geocode.center)
-            .addTo(this.layers.map)
-            .bindPopup(`<b>${geocode.name}</b>`, { autoPan: true, closeOnClick: false })
-            .openPopup();
-    },
-
     async _handleDrawCreated(e) {
         this.state.geomanDisabledByDraw = true;
         const layer = e.layer;

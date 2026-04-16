@@ -7,7 +7,8 @@ const UserMap = {
         defaultZoom: 13,
         maxZoom: 24,
         debounceDelay: 300,
-        svgInteractiveZoom: 18
+        svgInteractiveZoom: 18,
+        apiKey: "dc9aa1e045f7427f9da781232e8d0544"
     },
 
     layers: {
@@ -35,10 +36,13 @@ const UserMap = {
     },
 
     init() {
+        this._geoCache = new Map();
+
         this._setupBaseLayers();
         this._setupMap();
         this._setupLayerControl();
         this._setupEventHandlers();
+        this._setupGeocoder();
         this.loadLegend();
 
         this.layers.map.whenReady(() => {
@@ -63,6 +67,10 @@ const UserMap = {
 
     _setupEventHandlers() {
         window.MapCoreShared.setupReadOnlyMapEvents(this);
+    },
+
+    _formatLegendLabel(dia) {
+        return `DN${dia}`;
     }
 };
 

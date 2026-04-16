@@ -107,10 +107,104 @@
         });
     }
 
+    function setupGeocoder(ctx) {
+        const geoapifyGeocoder = {
+            geocode: (query, cb, context) => {
+                const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(query)}&limit=15&apiKey=${ctx.config.apiKey}`;
+
+                return fetch(url)
+                    .then(r => {
+                        if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+                        return r.json();
+                    })
+                    .then(data => {
+                        const results = (data.features || []).map(feature => {
+                            const prop = feature.properties;
+                            return {
+                                name: prop.formatted || [prop.street, prop.city, prop.country].filter(Boolean).join(', '),
+                                center: L.latLng(feature.geometry.coordinates[1], feature.geometry.coordinates[0]),
+                                bbox: feature.bbox ? L.latLngBounds(
+                                    [feature.bbox[1], feature.bbox[0]],
+                                    [feature.bbox[3], feature.bbox[2]]
+                                ) : null,
+                                properties: prop
+                            };
+                        });
+                        return results || [];
+                    })
+                    .catch(err => {
+                        console.error("Geoapify error:", err);
+                        return [];
+                    })
+                    .then(results => {
+                        if (typeof cb === "function") {
+                            cb.call(context || ctx, results);
+                        }
+                        return results;
+                    });
+            },
+            suggest: function (query, cb, context) {
+                return this.geocode(query, cb, context);
+            }
+        };
+
+        const geocoderControl = L.Control.geocoder({
+            geocoder: geoapifyGeocoder,
+            defaultMarkGeocode: false,
+            position: 'topleft',
+            placeholder: 'Cari lokasi...',
+            errorMessage: 'Lokasi tidak ditemukan',
+            showResultIcons: true,
+            collapsed: true,
+            showUniqueResult: true,
+            suggestTimeout: 250
+        });
+
+        geocoderControl.on('markgeocode', (e) => {
+            const geocode = e.geocode;
+            // Clear existing search markers on map (not GIS data)
+            ctx.layers.map.eachLayer(layer => {
+                if (layer instanceof L.Marker && layer._isSearchMarker) {
+                    ctx.layers.map.removeLayer(layer);
+                }
+            });
+
+            if (geocode.bbox) {
+                ctx.layers.map.fitBounds(geocode.bbox, { padding: [50, 50] });
+            } else {
+                ctx.layers.map.setView(geocode.center, 15);
+            }
+
+            const m = L.marker(geocode.center)
+                .addTo(ctx.layers.map)
+                .bindPopup(`<b>${geocode.name}</b>`, { autoPan: true, closeOnClick: false })
+                .openPopup();
+            m._isSearchMarker = true;
+        });
+
+        geocoderControl.addTo(ctx.layers.map);
+
+        // Fix for search results collapse when scrolling (CSS injection)
+        const style = document.createElement('style');
+        style.innerHTML = `
+            .leaflet-control-geocoder-results {
+                max-height: 300px;
+                overflow-y: auto !important;
+                -webkit-overflow-scrolling: touch;
+            }
+            /* Prevent Leaflet Control from intercepting scroll events as clicks that collapse the UI */
+            .leaflet-control-geocoder-results ul {
+                pointer-events: auto;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
     global.MapCoreShared = {
         createBaseLayers,
         setupMap,
         setupBasicLayerControl,
-        setupReadOnlyMapEvents
+        setupReadOnlyMapEvents,
+        setupGeocoder
     };
 })(window);

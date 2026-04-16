@@ -389,6 +389,202 @@
             } catch (err) {
                 console.error("Gagal load legend:", err);
             }
+        },
+
+        _setupGeocoder() {
+            const self = this; // 🔥 FIX context
+
+            const geoapifyGeocoder = {
+                geocode: (query, cb, context) => {
+
+                    const finalQuery = self._formatQuery(query);
+
+                    // 🔥 DEBUG (optional)
+                    console.log("Query:", query, "=>", finalQuery);
+
+                    // 🔥 CACHE
+                    if (self._geoCache.has(finalQuery)) {
+                        const cached = self._geoCache.get(finalQuery);
+                        cb.call(context || self, cached);
+                        return Promise.resolve(cached);
+                    }
+
+                    const url = `https://api.geoapify.com/v1/geocode/search?text=${encodeURIComponent(finalQuery)}
+                    &limit=10
+                    &filter=countrycode:id
+                    &bias=proximity:109.7280,-6.8974
+                    &apiKey=${self.config.apiKey}`;
+
+                    return fetch(url.replace(/\s+/g, ''))
+                        .then(r => {
+                            if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+                            return r.json();
+                        })
+                        .then(data => {
+
+                            let results = (data.features || []).map(feature => {
+                                const prop = feature.properties;
+
+                                return {
+                                    name: prop.formatted || [
+                                        prop.name,
+                                        prop.city,
+                                        prop.state,
+                                        prop.country
+                                    ].filter(Boolean).join(', '),
+
+                                    center: L.latLng(
+                                        feature.geometry.coordinates[1],
+                                        feature.geometry.coordinates[0]
+                                    ),
+
+                                    bbox: feature.bbox ? L.latLngBounds(
+                                        [feature.bbox[1], feature.bbox[0]],
+                                        [feature.bbox[3], feature.bbox[2]]
+                                    ) : null,
+
+                                    properties: prop
+                                };
+                            });
+
+                            // 🔥 RANKING
+                            results = self._rankResults(results);
+
+                            // 🔥 SAVE CACHE
+                            self._geoCache.set(finalQuery, results);
+
+                            return results;
+                        })
+                        .catch(err => {
+                            console.error("Geoapify error:", err);
+                            return [];
+                        })
+                        .then(results => {
+                            if (typeof cb === "function") {
+                                cb.call(context || self, results);
+                            }
+                            return results;
+                        });
+                },
+
+                suggest: function (query, cb, context) {
+                    return this.geocode(query, cb, context);
+                }
+            };
+
+            const geocoderControl = L.Control.geocoder({
+                geocoder: geoapifyGeocoder,
+                defaultMarkGeocode: false,
+                position: 'topleft',
+                placeholder: 'Cari desa/kecamatan...',
+                errorMessage: 'Lokasi tidak ditemukan',
+                showResultIcons: true,
+                collapsed: false,
+                showUniqueResult: true,
+                suggestTimeout: 250
+            });
+
+            geocoderControl.on('markgeocode', (e) => {
+                this._handleGeocodeResult(e.geocode);
+            });
+
+            geocoderControl.on('error', (e) => {
+                console.error('Geocoder error:', e.error);
+                if (typeof this.showToast === 'function') {
+                    this.showToast('Gagal mencari lokasi', 'error');
+                }
+            });
+
+            geocoderControl.addTo(this.layers.map);
+
+            const geocoderEl = geocoderControl.getContainer();
+            if (geocoderEl) {
+                const style = document.createElement('style');
+                style.innerHTML = `
+                    .leaflet-control-geocoder-results {
+                        max-height: 250px;
+                        overflow-y: auto !important;
+                        -webkit-overflow-scrolling: touch;
+                    }
+                    .leaflet-control-geocoder-results ul {
+                        pointer-events: auto;
+                    }
+                    .leaflet-control-geocoder-form.no-close .leaflet-control-geocoder-results,
+                    .leaflet-control-geocoder-form.no-close .leaflet-control-geocoder-alternatives {
+                        pointer-events: auto !important;
+                    }
+                `;
+                document.head.appendChild(style);
+
+                const form = geocoderEl.querySelector('.leaflet-control-geocoder-form');
+                if (form) {
+                    form.classList.add('no-close');
+                }
+
+                const results = geocoderEl.querySelector('.leaflet-control-geocoder-results');
+                const alternatives = geocoderEl.querySelector('.leaflet-control-geocoder-alternatives');
+                if (results) {
+                    results.addEventListener('mousedown', (event) => event.stopPropagation());
+                    results.addEventListener('wheel', (event) => event.stopPropagation());
+                }
+                if (alternatives) {
+                    alternatives.addEventListener('mousedown', (event) => event.stopPropagation());
+                    alternatives.addEventListener('wheel', (event) => event.stopPropagation());
+                }
+            }
+        },
+
+        // 🔹 Format query biar lebih lokal (Batang)
+        _formatQuery(query) {
+            const q = query.trim().toLowerCase();
+
+            if (q.length > 10) return query;
+            if (/\d/.test(q)) return query;
+            if (q.includes(',')) return query;
+
+            return `${query} batang`;
+        },
+
+        // 🔹 Ranking hasil (desa > kota)
+        _rankResults(results) {
+            const priority = {
+                village: 5,
+                suburb: 4,
+                city_district: 4,
+                town: 3,
+                city: 2,
+                state: 1
+            };
+
+            return results.sort((a, b) => {
+                const pa = priority[a.properties?.result_type] || 0;
+                const pb = priority[b.properties?.result_type] || 0;
+
+                if (pb === pa) {
+                    return (b.properties?.rank?.confidence || 0) -
+                        (a.properties?.rank?.confidence || 0);
+                }
+
+                return pb - pa;
+            });
+        },
+
+        _handleGeocodeResult(geocode) {
+            // Clear existing markers
+            this.layers.map.eachLayer(layer => {
+                if (layer instanceof L.Marker) this.layers.map.removeLayer(layer);
+            });
+
+            if (geocode.bbox) {
+                this.layers.map.fitBounds(geocode.bbox, { padding: [50, 50] });
+            } else {
+                this.layers.map.setView(geocode.center, 15);
+            }
+
+            L.marker(geocode.center)
+                .addTo(this.layers.map)
+                .bindPopup(`<b>${geocode.name}</b>`, { autoPan: true, closeOnClick: false })
+                .openPopup();
         }
     };
 
