@@ -16,6 +16,7 @@ const UserMap = {
         markerGroup: null,
         pipeGroup: L.layerGroup(),
         polygonGroup: L.layerGroup(),
+        legendToggleLayer: L.layerGroup(),
         pipeGeometry: null,
         polyGeometry: null,
         polyCanvasRenderer: null,
@@ -28,7 +29,8 @@ const UserMap = {
         layerVisibility: {
             markers: true,
             pipes: true,
-            polygons: false
+            polygons: false,
+            legend: true
         },
         diamtrColors: {},
         diameterList: [],
@@ -62,15 +64,46 @@ const UserMap = {
     },
 
     _setupLayerControl() {
-        window.MapCoreShared.setupBasicLayerControl(this);
+        const overlays = {
+            "Tampilkan Marker": this.layers.markerGroup,
+            "Tampilkan Pipa": this.layers.pipeGroup,
+            "Tampilkan Polygon": this.layers.polygonGroup,
+            "Tampilkan Legend": this.layers.legendToggleLayer
+        };
+        this.layerControl = L.control.layers(this.baseLayers, overlays, { collapsed: true }).addTo(this.layers.map);
+        this.layers.map.addLayer(this.layers.legendToggleLayer);
+        this._setLegendVisibility(true);
     },
 
     _setupEventHandlers() {
-        window.MapCoreShared.setupReadOnlyMapEvents(this);
+        this.layers.map.on("moveend", this.debounce(() => {
+            this.loadAllLayers();
+        }, this.config.debounceDelay));
+
+        this.layers.map.on('overlayadd overlayremove', (e) => {
+            const isVisible = e.type === 'overlayadd';
+
+            if (e.layer === this.layers.legendToggleLayer) {
+                this.state.layerVisibility.legend = isVisible;
+                this._setLegendVisibility(isVisible);
+                return;
+            }
+
+            if (e.layer === this.layers.markerGroup) this.state.layerVisibility.markers = isVisible;
+            if (e.layer === this.layers.pipeGroup) this.state.layerVisibility.pipes = isVisible;
+            if (e.layer === this.layers.polygonGroup) this.state.layerVisibility.polygons = isVisible;
+            this.loadAllLayers();
+        });
     },
 
     _formatLegendLabel(dia) {
         return `DN${dia}`;
+    },
+
+    _setLegendVisibility(isVisible) {
+        const legendEl = document.getElementById('legend');
+        if (!legendEl) return;
+        legendEl.style.display = isVisible ? 'inline-block' : 'none';
     }
 };
 

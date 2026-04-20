@@ -25,10 +25,7 @@
     </div>
   </div>
 
-
-  <div id="map">
-    <button id="legendToggleBtn">▶️</button>
-  </div>
+  <div id="map"></div>
   
   <!-- Legend Diameter Pipa -->
   <div id="legend" class="legend">
@@ -36,16 +33,6 @@
     <!-- item legend akan diisi via JS -->
   </div>
 
-  <script>
-    const legend = document.getElementById('legend');
-    const toggleBtn = document.getElementById('legendToggleBtn');
-
-    toggleBtn.addEventListener('click', () => {
-      const isHidden = window.getComputedStyle(legend).display === 'none';
-      legend.style.display = isHidden ? 'block' : 'none';
-      toggleBtn.innerText = isHidden ? '◀️' : '▶️';
-    });
-  </script>
   <script>
     // Ambil nama user dari sesi
     async function fetchUserInfo() {

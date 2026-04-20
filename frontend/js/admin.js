@@ -34,6 +34,7 @@ const MapManager = {
         // --- POLYGON LAYERS ---
         polygonGroup: L.layerGroup(),
         polygonGroupNew: L.layerGroup(),
+        legendToggleLayer: L.layerGroup(),
 
         // --- UTILITY LAYERS ---
         geometryLayer: L.featureGroup(), // Induk untuk pencarian/analisis area
@@ -63,7 +64,8 @@ const MapManager = {
             pipes: true,
             newPipes: true,
             polygons: false,
-            newPolygons: true
+            newPolygons: true,
+            legend: true
         },
         polygonCount: 0,
         cachedPolygonData: [],
@@ -263,9 +265,12 @@ const MapManager = {
             'Pipa Baru (Lokal)': this.layers.pipeGroupNew,
             'Tampilkan Polygon': this.layers.polygonGroup,
             'Polygon Baru (Lokal)': this.layers.polygonGroupNew,
+            'Tampilkan Legend': this.layers.legendToggleLayer
         };
 
         this.layerControl = L.control.layers(this.baseLayers, this.layers.overlays, { collapsed: true }).addTo(this.layers.map);
+        this.layers.map.addLayer(this.layers.legendToggleLayer);
+        this._setLegendVisibility(true);
 
         // PATCH: Hapus pemanggilan _setInitialCheckboxStates(true); karena Layer Control 
         // akan otomatis mencentang layer yang sudah ada di peta (yang di-add di _setupMap)
@@ -585,8 +590,15 @@ const MapManager = {
 
     _handleOverlayChange(e) {
         if (this.state.isInitializing) return;
+        if (e.layer === this.layers.legendToggleLayer) {
+            const isVisible = e.type === 'overlayadd';
+            this.state.layerVisibility.legend = isVisible;
+            this._setLegendVisibility(isVisible);
+            return;
+        }
 
         const layerName = this._getLayerNameFromEvent(e);
+        if (!layerName) return;
         console.log('🎯 Handling overlay change for:', layerName, 'Type:', e.type);
         const isVisible = e.type === 'overlayadd';
 
@@ -601,6 +613,12 @@ const MapManager = {
             // Jika dimatikan, paksa pembersihan memori untuk layer tersebut
             this._clearLayerData(layerName);
         }
+    },
+
+    _setLegendVisibility(isVisible) {
+        const legendEl = document.getElementById('legend');
+        if (!legendEl) return;
+        legendEl.style.display = isVisible ? 'inline-block' : 'none';
     },
 
     _loadLayerImmediately(layerName) {
