@@ -67,15 +67,24 @@ app.post('/api/login', async (req, res) => {
       return res.status(401).json({ error: 'Password salah' });
     }
 
-    // Update last_login secara async (jangan ditunggu agar login lebih cepat)
-    dbPostgres.query('UPDATE users SET last_login = NOW() WHERE id = $1', [user.id])
-      .catch(e => console.error('Gagal update last_login:', e.message));
+    // Update last_login dan simpan nilai timestamp terbaru ke session.
+    let lastLogin = user.last_login || null;
+    try {
+      const { rows: loginRows } = await dbPostgres.query(
+        'UPDATE users SET last_login = NOW() WHERE id = $1 RETURNING last_login',
+        [user.id]
+      );
+      lastLogin = loginRows[0]?.last_login || lastLogin;
+    } catch (e) {
+      console.error('Gagal update last_login:', e.message);
+    }
 
     // Simpan data ke session
     req.session.user = {
       id: user.id,
       username: user.username,
-      role: user.role
+      role: user.role,
+      last_login: lastLogin
     };
 
     // Paksa simpan ke database sebelum memberi respon ke client
