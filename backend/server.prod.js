@@ -119,11 +119,29 @@ app.post('/api/logout', (req, res) => {
 });
 
 // === GET Session (untuk cek apakah user sudah login) ===
-app.get('/api/session', (req, res) => {
-  if (req.session && req.session.user) {
-    res.json({ user: req.session.user });
-  } else {
-    res.status(401).json({ error: "Unauthorized" });
+app.get('/api/session', async (req, res) => {
+  if (!req.session || !req.session.user) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  try {
+    const { rows } = await dbPostgres.query(
+      'SELECT last_login FROM users WHERE id = $1',
+      [req.session.user.id]
+    );
+
+    const lastLogin = rows[0]?.last_login || null;
+    req.session.user.last_login = lastLogin;
+
+    return res.json({
+      user: {
+        ...req.session.user,
+        last_login: lastLogin
+      }
+    });
+  } catch (err) {
+    console.error('Gagal ambil session user detail:', err.message);
+    return res.json({ user: req.session.user });
   }
 });
 
