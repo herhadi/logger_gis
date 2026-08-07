@@ -17,6 +17,7 @@ npm-debug.log*
 .gitignore
 *.md
 !README.md
+!docs/*.md
 
 # SSH keys / secrets
 backend/logger_gis

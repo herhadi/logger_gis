@@ -1,12 +1,12 @@
-require('dotenv').config();
 const { Pool } = require('pg');
+const config = require('./config');
 
 /**
  * Konfigurasi Koneksi PostgreSQL (Railway)
  * Menggunakan Connection Pool untuk efisiensi resource.
  */
 const dbPostgres = new Pool({
-  connectionString: process.env.DATABASE_URL,
+  connectionString: config.databaseUrl,
   ssl: {
     // Wajib untuk koneksi eksternal ke database cloud Railway
     rejectUnauthorized: false 
