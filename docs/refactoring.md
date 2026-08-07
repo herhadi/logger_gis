@@ -59,8 +59,14 @@ Dokumen ini menjadi catatan kerja utama refaktorisasi GIS Watermeter. Prinsip ut
 Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 
 - [ ] Ekstrak route marker ke `backend/routes/marker.js`.
+- [x] Ekstrak endpoint `GET /api/marker` ke `backend/routes/marker.js`.
+- [x] Ekstrak endpoint `GET /api/marker/:tipe/:id` ke `backend/routes/marker.js`.
+- [x] Ekstrak endpoint `POST /api/marker/create` ke `backend/routes/marker.js`.
+- [x] Ekstrak endpoint `PUT /api/marker/update/:tipe/:id` ke `backend/routes/marker.js`.
+- [x] Ekstrak endpoint `DELETE /api/marker/delete/:tipe/:id` ke `backend/routes/marker.js`.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
+- [x] Pusatkan query union marker berdasarkan whitelist.
 - [x] Ekstrak validasi dan konversi geometry umum ke `backend/utils/geometry.js`.
 - [ ] Ekstrak route polygon.
 - [ ] Ekstrak route pipa.

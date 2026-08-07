@@ -11,10 +11,15 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Memusatkan whitelist tabel dan validasi koordinat marker di utility backend bersama.
 - Menambahkan unit test untuk validasi utility marker.
 - Memusatkan validasi dan konversi geometry line/polygon di utility backend bersama.
+- Memusatkan pembentukan query union marker berdasarkan whitelist tabel.
 
 ### Refactoring
 
 - Menetapkan milestone terpisah untuk ekstraksi utility marker dan ekstraksi route marker.
+- Memindahkan endpoint `GET /api/marker` ke router marker terpisah.
+- Memindahkan endpoint detail marker ke router marker terpisah.
+- Memindahkan endpoint create marker ke router marker terpisah.
+- Memindahkan endpoint update dan delete marker ke router marker terpisah.
 
 ### Security
 

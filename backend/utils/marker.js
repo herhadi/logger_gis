@@ -21,4 +21,16 @@ function coordinatesToWkt(coords) {
   return isValidCoordinates(coords) ? `POINT(${coords[1]} ${coords[0]})` : null;
 }
 
-module.exports = { MARKER_TABLES, getMarkerTable, isValidCoordinates, coordinatesToWkt };
+function markerUnionSql() {
+  return Object.entries(MARKER_TABLES)
+    .map(([type, table]) => `SELECT ogr_fid AS id, shape AS geom, '${type}' AS tipe FROM ${table}`)
+    .join('\n      UNION ALL\n      ');
+}
+
+module.exports = {
+  MARKER_TABLES,
+  getMarkerTable,
+  isValidCoordinates,
+  coordinatesToWkt,
+  markerUnionSql
+};

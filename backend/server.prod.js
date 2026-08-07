@@ -19,7 +19,13 @@ const fetch = global.fetch;
 
 // Kita hanya butuh dbPostgres sekarang
 const { dbPostgres } = require('./db');
-const { getMarkerTable, isValidCoordinates, coordinatesToWkt } = require('./utils/marker');
+const {
+  getMarkerTable,
+  isValidCoordinates,
+  coordinatesToWkt,
+  markerUnionSql
+} = require('./utils/marker');
+const { createMarkerRouter } = require('./routes/marker');
 
 const app = express();
 
@@ -59,6 +65,8 @@ app.use(session({
     httpOnly: true
   }
 }));
+
+app.use('/api/marker', createMarkerRouter(dbPostgres, requireLogin));
 
 // === POST Login ===
 app.post('/api/login', async (req, res) => {
@@ -650,209 +658,6 @@ app.delete('/api/polygon/delete/:id', requireLogin, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ message: "Gagal menghapus polygon" });
-  }
-});
-
-// === API CRUD untuk MARKER ===
-// 1. GET semua marker (Optimized with Database Casting)
-app.get('/api/marker', async (req, res) => {
-  try {
-    let params = [];
-    let whereClause = "";
-
-    if (req.query.bbox) {
-      const bbox = req.query.bbox.split(',').map(Number);
-      if (bbox.length === 4) {
-        // PostGIS Envelope: West, South, East, North
-        whereClause = `WHERE m.geom && ST_MakeEnvelope($1, $2, $3, $4, 4326)`;
-        params = [bbox[0], bbox[1], bbox[2], bbox[3]];
-      }
-    }
-
-    const sql = `
-      SELECT 
-        m.id, 
-        ST_AsGeoJSON(m.geom)::json AS geometry, -- Casting langsung ke JSON di Postgres
-        m.tipe
-      FROM (
-        SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe FROM gis_acc
-        UNION ALL
-        SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe FROM gis_reservoir
-        UNION ALL
-        SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe FROM gis_tank
-        UNION ALL
-        SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe FROM gis_valve
-      ) AS m
-      ${whereClause}
-    `;
-
-    const { rows } = await dbPostgres.query(sql, params);
-
-    // Sekarang mapping jauh lebih ringan karena 'geometry' sudah objek JSON
-    const parsed = rows.map(row => ({
-      ...row,
-      coords: [row.geometry.coordinates[1], row.geometry.coordinates[0]]
-    }));
-
-    res.json(parsed);
-  } catch (err) {
-    console.error("CRITICAL ERROR MARKER:", err.message);
-    res.status(500).json({ error: "Gagal memuat marker" });
-  }
-});
-
-app.get('/api/marker/:tipe/:id', requireLogin, async (req, res) => {
-  try {
-    const { id, tipe } = req.params;
-    const tableName = getMarkerTable(tipe);
-    if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak valid' });
-
-    // Detect available columns so detail query stays compatible across table variants
-    const { rows: cols } = await dbPostgres.query(
-      `SELECT column_name FROM information_schema.columns WHERE table_name = $1 AND column_name IN ('ogr_fid', 'dc_id', 'keterangan', 'zona', 'lokasi', 'elevation')`,
-      [tableName]
-    );
-
-    const availableColumns = new Set(cols.map(c => c.column_name));
-    const selectColumns = [];
-
-    if (availableColumns.has('ogr_fid')) selectColumns.push('ogr_fid AS id');
-    if (availableColumns.has('dc_id')) selectColumns.push('dc_id');
-    if (availableColumns.has('keterangan')) selectColumns.push('keterangan');
-    if (availableColumns.has('zona')) selectColumns.push('zona');
-    if (availableColumns.has('lokasi')) selectColumns.push('lokasi');
-    if (availableColumns.has('elevation')) selectColumns.push('elevation');
-
-    if (selectColumns.length === 0) {
-      return res.status(500).json({ error: 'Tabel marker tidak memiliki kolom metadata yang valid' });
-    }
-
-    const sql = `SELECT ${selectColumns.join(', ')} FROM ${tableName} WHERE ogr_fid = $1`;
-    const { rows } = await dbPostgres.query(sql, [id]);
-
-    if (rows.length === 0) return res.status(404).json({ error: 'Marker tidak ditemukan' });
-
-    res.json({ ...rows[0], tipe });
-  } catch (err) {
-    console.error('Marker Detail Error:', err);
-    res.status(500).json({ error: 'Gagal memuat detail marker' });
-  }
-});
-
-// 2. CREATE marker (With Strict Table Validation)
-app.post('/api/marker/create', requireLogin, async (req, res) => {
-  try {
-    const { coords, dc_id, tipe, keterangan, zona, lokasi, elevation } = req.body;
-
-    // Validasi Input
-    if (!isValidCoordinates(coords)) return res.status(400).json({ error: 'Koordinat tidak valid' });
-
-    const tableName = getMarkerTable(tipe);
-    if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak terdaftar' });
-
-    const wkt = coordinatesToWkt(coords);
-
-    // Build dynamic SQL dengan hanya kolom yang ada value
-    const columns = ['shape', 'dc_id'];
-    const params = [wkt, dc_id];
-    let paramCount = 2;
-
-    if (keterangan !== null && keterangan !== undefined) {
-      columns.push('keterangan');
-      params.push(keterangan);
-      paramCount++;
-    }
-    if (zona !== null && zona !== undefined) {
-      columns.push('zona');
-      params.push(zona);
-      paramCount++;
-    }
-    if (lokasi !== null && lokasi !== undefined) {
-      columns.push('lokasi');
-      params.push(lokasi);
-      paramCount++;
-    }
-    if (elevation !== null && elevation !== undefined) {
-      columns.push('elevation');
-      params.push(elevation);
-      paramCount++;
-    }
-
-    // Create placeholders: $1 for shape (special ST_GeomFromText), $2+ for other columns
-    const placeholders = columns.map((col, idx) => {
-      if (idx === 0) return `ST_GeomFromText($1, 4326)`; // shape column needs ST_GeomFromText
-      return `$${idx + 1}`;
-    }).join(', ');
-
-    const sql = `INSERT INTO ${tableName} (${columns.join(', ')}) 
-                 VALUES (${placeholders}) 
-                 RETURNING ogr_fid`;
-
-    const result = await dbPostgres.query(sql, params);
-
-    res.json({
-      id: result.rows[0].ogr_fid,
-      ogr_fid: result.rows[0].ogr_fid,
-      success: true,
-      message: `Marker ${tipe} berhasil disimpan`
-    });
-  } catch (err) {
-    console.error("Create Marker Error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 3. UPDATE marker
-app.put('/api/marker/update/:tipe/:id', requireLogin, async (req, res) => {
-  try {
-    const { id, tipe } = req.params;
-    const { coords, dc_id, keterangan, zona, lokasi, elevation } = req.body;
-
-    const tableName = getMarkerTable(tipe);
-
-    if (!tableName) return res.status(400).json({ error: 'Tipe tidak valid' });
-    if (!isValidCoordinates(coords)) return res.status(400).json({ error: 'Koordinat wajib [lat, lng]' });
-
-    const wkt = coordinatesToWkt(coords);
-
-    const sql = `
-      UPDATE ${tableName} 
-      SET 
-        shape = ST_GeomFromText($1, 4326), 
-        dc_id = $2, 
-        keterangan = $3, 
-        zona = $4,
-        lokasi = $5,
-        elevation = $6,
-        tgl_update = CURRENT_TIMESTAMP
-      WHERE ogr_fid = $7
-    `;
-
-    const result = await dbPostgres.query(sql, [wkt, dc_id, keterangan, zona, lokasi, elevation, id]);
-
-    if (result.rowCount === 0) return res.status(404).json({ error: "Data tidak ditemukan" });
-
-    res.json({ success: true, message: `Marker ${tipe} diperbarui` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 4. DELETE marker
-app.delete('/api/marker/delete/:tipe/:id', requireLogin, async (req, res) => {
-  try {
-    const { id, tipe } = req.params;
-
-    const tableName = getMarkerTable(tipe);
-    if (!tableName) return res.status(400).json({ error: 'Tipe marker tidak valid' });
-
-    const result = await dbPostgres.query(`DELETE FROM ${tableName} WHERE ogr_fid = $1`, [id]);
-    if (result.rowCount === 0) return res.status(404).json({ error: 'Marker tidak ditemukan' });
-
-    res.json({ success: true, message: `Marker ${tipe} berhasil dihapus` });
-  } catch (err) {
-    console.error('Delete Marker Error:', err.message);
-    res.status(500).json({ error: 'Gagal menghapus marker' });
   }
 });
 

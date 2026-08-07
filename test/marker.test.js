@@ -3,7 +3,8 @@ const assert = require('node:assert/strict');
 const {
   getMarkerTable,
   isValidCoordinates,
-  coordinatesToWkt
+  coordinatesToWkt,
+  markerUnionSql
 } = require('../backend/utils/marker');
 
 test('marker type hanya menerima tabel yang di-whitelist', () => {
@@ -23,4 +24,11 @@ test('koordinat dikonversi ke WKT lat/lng yang benar', () => {
   assert.equal(coordinatesToWkt([-6.2, 106.8]), 'POINT(106.8 -6.2)');
   assert.equal(coordinatesToWkt(['-6.2', '106.8']), 'POINT(106.8 -6.2)');
   assert.equal(coordinatesToWkt([null, 106.8]), null);
+});
+
+test('query union marker mencakup semua tabel yang di-whitelist', () => {
+  const sql = markerUnionSql();
+  for (const type of ['acc', 'reservoir', 'tank', 'valve']) {
+    assert.match(sql, new RegExp(`'${type}'`));
+  }
 });
