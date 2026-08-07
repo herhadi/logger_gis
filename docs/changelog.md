@@ -22,6 +22,8 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Memindahkan endpoint update dan delete marker ke router marker terpisah.
 - Menambahkan router polygon untuk list, detail, create, update, dan delete.
 - Menghapus route polygon legacy dari server utama dan memindahkan statistik seleksi ke router khusus.
+- Memindahkan seluruh route pipa ke router pipa terpisah.
+- Menambahkan test registrasi route untuk mendeteksi collision dasar.
 
 ### Security
 

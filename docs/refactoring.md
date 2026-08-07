@@ -67,6 +67,8 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Buat router polygon terpisah dengan list, detail, create, update, dan delete.
 - [x] Pindahkan `POST /api/selection/stats` ke router terpisah.
 - [x] Hapus blok legacy polygon dari `server.prod.js`.
+- [x] Pindahkan seluruh route pipa ke `backend/routes/pipa.js`.
+- [x] Tambahkan route registration test untuk pipa, polygon, dan selection.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
