@@ -30,6 +30,11 @@ const { createPolygonRouter, createSelectionRouter } = require('./routes/polygon
 const { createPipaRouter } = require('./routes/pipa');
 const { createAuthRouter } = require('./routes/auth');
 const { createTelegramRouter } = require('./routes/telegram');
+const {
+  requireLogin,
+  requireAdmin,
+  requireCronSecret
+} = require('./middleware/auth');
 
 const app = express();
 
@@ -75,29 +80,7 @@ app.use('/api/polygon', createPolygonRouter(dbPostgres, requireLogin));
 app.use('/api/selection', createSelectionRouter(dbPostgres));
 app.use('/api/pipa', createPipaRouter(dbPostgres, requireLogin));
 app.use('/api', createAuthRouter(dbPostgres));
-app.use('/', createTelegramRouter(dbPostgres, requireAdmin, requireCronSecret));
-
-// Middleware autentikasi untuk proteksi API
-function requireLogin(req, res, next) {
-  if (!req.session || !req.session.user) {
-    return res.status(401).json({ error: 'Silakan login terlebih dahulu' });
-  }
-  next();
-}
-
-function requireAdmin(req, res, next) {
-  if (!req.session?.user || req.session.user.role !== 'admin') {
-    return res.status(403).json({ error: 'Akses admin diperlukan' });
-  }
-  next();
-}
-
-function requireCronSecret(req, res, next) {
-  if (!config.cronSecret || req.get('x-cron-secret') !== config.cronSecret) {
-    return res.status(401).json({ error: 'Cron secret tidak valid' });
-  }
-  next();
-}
+app.use('/', createTelegramRouter(dbPostgres, requireAdmin, requireCronSecret(config.cronSecret)));
 
 // === STATIC FILES (PRODUCTION) ===
 app.use(express.static(path.join(__dirname, '../frontend')));

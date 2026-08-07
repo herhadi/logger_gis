@@ -28,6 +28,8 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Menambahkan test registrasi route auth.
 - Memindahkan webhook Telegram dan monitoring/cron ke router Telegram terpisah.
 - Menambahkan test registrasi route Telegram.
+- Memusatkan middleware login, admin, dan cron secret.
+- Menambahkan unit test untuk middleware keamanan.
 
 ### Security
 

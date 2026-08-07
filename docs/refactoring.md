@@ -73,6 +73,8 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Tambahkan route registration test untuk auth.
 - [x] Pindahkan webhook Telegram, endpoint monitoring, dan cron ke `backend/routes/telegram.js`.
 - [x] Tambahkan route registration test untuk Telegram.
+- [x] Pindahkan middleware auth/admin/cron ke `backend/middleware/auth.js`.
+- [x] Tambahkan unit test middleware keamanan.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
