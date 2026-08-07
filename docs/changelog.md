@@ -24,6 +24,10 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Menghapus route polygon legacy dari server utama dan memindahkan statistik seleksi ke router khusus.
 - Memindahkan seluruh route pipa ke router pipa terpisah.
 - Menambahkan test registrasi route untuk mendeteksi collision dasar.
+- Memindahkan endpoint auth/session ke router auth terpisah.
+- Menambahkan test registrasi route auth.
+- Memindahkan webhook Telegram dan monitoring/cron ke router Telegram terpisah.
+- Menambahkan test registrasi route Telegram.
 
 ### Security
 

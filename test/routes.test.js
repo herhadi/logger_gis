@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { createPipaRouter } = require('../backend/routes/pipa');
 const { createPolygonRouter, createSelectionRouter } = require('../backend/routes/polygon');
+const { createAuthRouter } = require('../backend/routes/auth');
+const { createTelegramRouter } = require('../backend/routes/telegram');
 
 function routesOf(router) {
   return router.stack
@@ -32,4 +34,25 @@ test('router polygon dan selection mendaftarkan endpoint utama', () => {
     'DELETE /delete/:id'
   ]);
   assert.deepEqual(selectionRoutes, ['POST /stats']);
+});
+
+test('router auth mendaftarkan endpoint session', () => {
+  assert.deepEqual(routesOf(createAuthRouter({ query() {} })), [
+    'POST /login',
+    'POST /logout',
+    'GET /session'
+  ]);
+});
+
+test('router Telegram mendaftarkan webhook dan endpoint operasional', () => {
+  const routes = routesOf(createTelegramRouter({ query() {} }, () => {}, () => {}));
+  assert.deepEqual(routes, [
+    'POST /webhook',
+    'GET /api/test-telegram',
+    'GET /api/test-monitor',
+    'GET /api/set-webhook',
+    'GET /api/webhook-info',
+    'GET /api/delete-webhook',
+    'GET /api/cron'
+  ]);
 });
