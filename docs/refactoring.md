@@ -64,6 +64,10 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Ekstrak endpoint `POST /api/marker/create` ke `backend/routes/marker.js`.
 - [x] Ekstrak endpoint `PUT /api/marker/update/:tipe/:id` ke `backend/routes/marker.js`.
 - [x] Ekstrak endpoint `DELETE /api/marker/delete/:tipe/:id` ke `backend/routes/marker.js`.
+- [x] Buat router polygon terpisah dengan list, detail, create, update, dan delete.
+- [x] Pindahkan `POST /api/selection/stats` ke router terpisah.
+- [x] Hapus blok legacy polygon dari `server.prod.js`.
+- [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
 - [x] Pusatkan query union marker berdasarkan whitelist.
