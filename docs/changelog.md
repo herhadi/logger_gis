@@ -33,6 +33,7 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Memisahkan app factory Express dari entrypoint production agar dapat diuji tanpa `listen()`.
 - Menambahkan injection point untuk database pool dan session store pada app factory.
 - Menambahkan guard untuk integration test database.
+- Menambahkan integration test HTTP read-only berbasis `supertest`.
 
 ### Security
 

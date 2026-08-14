@@ -8,10 +8,26 @@ test('integration test membutuhkan RUN_INTEGRATION_TESTS=1', { skip: integration
 });
 
 if (integrationEnabled) {
-  test('integration test belum diaktifkan tanpa konfigurasi database test', () => {
+  const request = require('supertest');
+  const { createApp } = require('../backend/app');
+  const app = createApp();
+
+  test('session tanpa login mengembalikan 401', async () => {
+    const response = await request(app).get('/api/session');
+    if (response.statusCode !== 401) {
+      throw new Error(`Expected 401, received ${response.statusCode}`);
+    }
+  });
+
+  test('endpoint read pipa, polygon, dan marker merespons', async () => {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('Integration test tidak boleh dijalankan dengan NODE_ENV=production');
     }
-    throw new Error('Set DATABASE_URL ke database test/staging sebelum mengaktifkan integration test');
+    for (const path of ['/api/pipa', '/api/polygon', '/api/marker']) {
+      const response = await request(app).get(path);
+      if (response.statusCode !== 200) {
+        throw new Error(`${path} returned ${response.statusCode}`);
+      }
+    }
   });
 }

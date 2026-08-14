@@ -78,6 +78,7 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Pisahkan Express app factory ke `backend/app.js`; `server.prod.js` hanya menangani bootstrap/listen.
 - [x] Buat dependency injection untuk database pool dan session store pada app factory.
 - [x] Tambahkan guard integration test agar database production tidak tersentuh oleh test default.
+- [x] Tambahkan integration test read-only berbasis `supertest` yang opt-in.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
