@@ -31,6 +31,7 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Memusatkan middleware login, admin, dan cron secret.
 - Menambahkan unit test untuk middleware keamanan.
 - Memisahkan app factory Express dari entrypoint production agar dapat diuji tanpa `listen()`.
+- Menambahkan injection point untuk database pool dan session store pada app factory.
 - Menambahkan guard untuk integration test database.
 
 ### Security

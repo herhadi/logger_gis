@@ -18,7 +18,7 @@ const ADMIN_ID = config.adminId;
 const fetch = global.fetch;
 
 // Kita hanya butuh dbPostgres sekarang
-const { dbPostgres } = require('./db');
+const { dbPostgres: defaultDb } = require('./db');
 const {
   getMarkerTable,
   isValidCoordinates,
@@ -36,6 +36,7 @@ const {
   requireCronSecret
 } = require('./middleware/auth');
 
+function createApp({ db = defaultDb, sessionStore } = {}) {
 const app = express();
 
 // PENTING: Trust proxy untuk HTTPS Railway agar cookie 'secure: true' terkirim
@@ -54,8 +55,8 @@ app.use(express.json());
 
 // === KONFIGURASI SESSION POSTGRESQL ===
 app.use(session({
-  store: new pgSession({
-    pool: dbPostgres,
+  store: sessionStore || new pgSession({
+    pool: db,
     tableName: 'session',
     createTableIfMissing: false
   }),
@@ -75,12 +76,12 @@ app.use(session({
   }
 }));
 
-app.use('/api/marker', createMarkerRouter(dbPostgres, requireLogin));
-app.use('/api/polygon', createPolygonRouter(dbPostgres, requireLogin));
-app.use('/api/selection', createSelectionRouter(dbPostgres));
-app.use('/api/pipa', createPipaRouter(dbPostgres, requireLogin));
-app.use('/api', createAuthRouter(dbPostgres));
-app.use('/', createTelegramRouter(dbPostgres, requireAdmin, requireCronSecret(config.cronSecret)));
+app.use('/api/marker', createMarkerRouter(db, requireLogin));
+app.use('/api/polygon', createPolygonRouter(db, requireLogin));
+app.use('/api/selection', createSelectionRouter(db));
+app.use('/api/pipa', createPipaRouter(db, requireLogin));
+app.use('/api', createAuthRouter(db));
+app.use('/', createTelegramRouter(db, requireAdmin, requireCronSecret(config.cronSecret)));
 
 // === STATIC FILES (PRODUCTION) ===
 app.use(express.static(path.join(__dirname, '../frontend')));
@@ -93,5 +94,7 @@ app.use(errorHandler);
 
 // === START SERVER ===
 
-module.exports = app;
+return app;
+}
 
+module.exports = { createApp };
