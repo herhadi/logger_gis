@@ -76,6 +76,7 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Pindahkan middleware auth/admin/cron ke `backend/middleware/auth.js`.
 - [x] Tambahkan unit test middleware keamanan.
 - [x] Pisahkan Express app factory ke `backend/app.js`; `server.prod.js` hanya menangani bootstrap/listen.
+- [x] Tambahkan guard integration test agar database production tidak tersentuh oleh test default.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
