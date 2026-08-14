@@ -30,6 +30,7 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Menambahkan test registrasi route Telegram.
 - Memusatkan middleware login, admin, dan cron secret.
 - Menambahkan unit test untuk middleware keamanan.
+- Memisahkan app factory Express dari entrypoint production agar dapat diuji tanpa `listen()`.
 
 ### Security
 

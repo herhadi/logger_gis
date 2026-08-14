@@ -75,6 +75,7 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Tambahkan route registration test untuk Telegram.
 - [x] Pindahkan middleware auth/admin/cron ke `backend/middleware/auth.js`.
 - [x] Tambahkan unit test middleware keamanan.
+- [x] Pisahkan Express app factory ke `backend/app.js`; `server.prod.js` hanya menangani bootstrap/listen.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
@@ -82,7 +83,7 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Ekstrak validasi dan konversi geometry umum ke `backend/utils/geometry.js`.
 - [ ] Ekstrak route polygon.
 - [ ] Ekstrak route pipa.
-- [ ] Ekstrak auth/session middleware.
+- [x] Ekstrak auth/session middleware.
 - [ ] Ekstrak Telegram dan monitoring.
 - [ ] Pastikan route spesifik `/api/pipa/option` tetap dideklarasikan sebelum `/api/pipa/:id`.
 
