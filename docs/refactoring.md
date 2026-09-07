@@ -80,6 +80,8 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Tambahkan guard integration test agar database production tidak tersentuh oleh test default.
 - [x] Tambahkan integration test read-only berbasis `supertest` yang opt-in.
 - [x] Tambahkan integration test untuk bbox/zoom dan selection stats.
+- [x] Tambahkan CRUD integration test opt-in dengan cleanup fixture.
+- [x] Dokumentasikan command unit, read-only integration, dan CRUD integration test.
 - [x] Sediakan template environment untuk integration test staging.
 - [x] Lengkapi environment Render dengan `CRON_SECRET` dan `BASE_URL`.
 - [x] Terapkan patch dependency security dan verifikasi `npm audit` menjadi 0 vulnerability.
@@ -149,6 +151,33 @@ node --check frontend/js/map-read-shared.js
 node --check frontend/js/map-admin-edit-shared.js
 git diff --check
 ```
+
+## Menjalankan Test
+
+Unit/route test:
+
+```bash
+npm test
+```
+
+Read-only integration test:
+
+```bash
+RUN_INTEGRATION_TESTS=1 NODE_ENV=development npm test
+```
+
+CRUD integration test membutuhkan akun admin khusus database test:
+
+```bash
+RUN_INTEGRATION_TESTS=1 \
+RUN_INTEGRATION_WRITE=1 \
+NODE_ENV=development \
+TEST_ADMIN_USERNAME='admin-test' \
+TEST_ADMIN_PASSWORD='password-test' \
+npm test
+```
+
+CRUD test wajib menggunakan database non-production dan memiliki cleanup otomatis untuk fixture yang dibuat.
 
 ## Definition of Done
 

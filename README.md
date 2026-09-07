@@ -222,6 +222,33 @@ Smoke test deployment Render:
 BASE_URL=https://DOMAIN-RENDER bash scripts/smoke-render.sh
 ```
 
+### Test
+
+Unit dan route test tanpa database:
+
+```bash
+npm test
+```
+
+Integration test read-only menggunakan Neon/staging:
+
+```bash
+RUN_INTEGRATION_TESTS=1 NODE_ENV=development npm test
+```
+
+CRUD integration test menggunakan akun admin khusus test:
+
+```bash
+RUN_INTEGRATION_TESTS=1 \
+RUN_INTEGRATION_WRITE=1 \
+NODE_ENV=development \
+TEST_ADMIN_USERNAME='admin-test' \
+TEST_ADMIN_PASSWORD='password-test' \
+npm test
+```
+
+CRUD test membuat fixture marker, polygon, dan pipa, lalu menghapusnya otomatis. Jangan gunakan database production atau akun admin production.
+
 Jalankan syntax check minimal:
 
 ```bash
