@@ -80,6 +80,8 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Tambahkan guard integration test agar database production tidak tersentuh oleh test default.
 - [x] Tambahkan integration test read-only berbasis `supertest` yang opt-in.
 - [x] Sediakan template environment untuk integration test staging.
+- [x] Lengkapi environment Render dengan `CRON_SECRET` dan `BASE_URL`.
+- [x] Terapkan patch dependency security dan verifikasi `npm audit` menjadi 0 vulnerability.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.

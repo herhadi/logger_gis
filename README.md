@@ -75,6 +75,8 @@ Untuk production di Render, set minimal variable berikut:
 - `SESSION_SECRET`
 - `TELEGRAM_TOKEN`
 - `ADMIN_ID`
+- `CRON_SECRET`
+- `BASE_URL` (URL publik service Render, untuk webhook Telegram)
 - `NODE_ENV=production`
 
 Jangan commit file `.env`, token, private key, atau secret lain.
