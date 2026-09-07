@@ -30,4 +30,23 @@ if (integrationEnabled) {
       }
     }
   });
+
+  test('endpoint GIS menerima filter bbox/zoom dan statistik seleksi', async () => {
+    const pipa = await request(app).get('/api/pipa?bbox=-7,106,-6,107&zoom=12');
+    const polygon = await request(app).get('/api/polygon?bbox=-7,106,-6,107&zoom=12');
+    const selection = await request(app)
+      .post('/api/selection/stats')
+      .send({
+        geometry: {
+          type: 'Polygon',
+          coordinates: [[[106, -7], [107, -7], [107, -6], [106, -6], [106, -7]]]
+        }
+      });
+
+    for (const [name, response] of [['pipa bbox', pipa], ['polygon bbox', polygon], ['selection stats', selection]]) {
+      if (response.statusCode !== 200) {
+        throw new Error(`${name} returned ${response.statusCode}: ${JSON.stringify(response.body)}`);
+      }
+    }
+  });
 }

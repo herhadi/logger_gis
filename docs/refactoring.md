@@ -79,6 +79,7 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Buat dependency injection untuk database pool dan session store pada app factory.
 - [x] Tambahkan guard integration test agar database production tidak tersentuh oleh test default.
 - [x] Tambahkan integration test read-only berbasis `supertest` yang opt-in.
+- [x] Tambahkan integration test untuk bbox/zoom dan selection stats.
 - [x] Sediakan template environment untuk integration test staging.
 - [x] Lengkapi environment Render dengan `CRON_SECRET` dan `BASE_URL`.
 - [x] Terapkan patch dependency security dan verifikasi `npm audit` menjadi 0 vulnerability.

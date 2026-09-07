@@ -34,6 +34,7 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Menambahkan injection point untuk database pool dan session store pada app factory.
 - Menambahkan guard untuk integration test database.
 - Menambahkan integration test HTTP read-only berbasis `supertest`.
+- Memperluas integration test untuk filter GIS dan statistik seleksi.
 - Menambahkan template `.env.test.example` untuk integration test staging.
 - Menambahkan `CRON_SECRET` dan `BASE_URL` ke konfigurasi Render.
 - Memperbarui dependency transitif melalui `npm audit fix`; hasil audit menjadi 0 vulnerability.
