@@ -53,6 +53,10 @@ app.use(cors({
 }));
 app.use(express.json());
 
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
+
 // === KONFIGURASI SESSION POSTGRESQL ===
 app.use(session({
   store: sessionStore || new pgSession({

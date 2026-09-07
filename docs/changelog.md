@@ -37,6 +37,7 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Menambahkan template `.env.test.example` untuk integration test staging.
 - Menambahkan `CRON_SECRET` dan `BASE_URL` ke konfigurasi Render.
 - Memperbarui dependency transitif melalui `npm audit fix`; hasil audit menjadi 0 vulnerability.
+- Menambahkan `GET /health` dan konfigurasi health check Render.
 
 ### Security
 
