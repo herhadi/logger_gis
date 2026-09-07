@@ -216,6 +216,12 @@ https://DOMAIN-RENDER/webhook
 
 ## Pemeriksaan Sebelum Commit/Deploy
 
+Smoke test deployment Render:
+
+```bash
+BASE_URL=https://DOMAIN-RENDER bash scripts/smoke-render.sh
+```
+
 Jalankan syntax check minimal:
 
 ```bash

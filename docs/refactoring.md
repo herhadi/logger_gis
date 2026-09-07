@@ -83,6 +83,7 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Lengkapi environment Render dengan `CRON_SECRET` dan `BASE_URL`.
 - [x] Terapkan patch dependency security dan verifikasi `npm audit` menjadi 0 vulnerability.
 - [x] Tambahkan endpoint health check ringan untuk Render.
+- [x] Tambahkan script smoke test read-only untuk deployment Render.
 - [ ] Hapus blok legacy polygon dari `server.prod.js` setelah parity test endpoint selesai.
 - [x] Ekstrak whitelist dan validasi koordinat marker ke `backend/utils/marker.js`.
 - [x] Tambahkan unit test untuk utility marker.
