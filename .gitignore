@@ -3,6 +3,7 @@ node_modules/
 
 # File konfigurasi rahasia (nanti untuk database)
 .env
+.env.test
 
 # Pengaturan editor (personal)
 .vscode/
