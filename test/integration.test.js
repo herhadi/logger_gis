@@ -1,6 +1,7 @@
 const test = require('node:test');
 
 const integrationEnabled = process.env.RUN_INTEGRATION_TESTS === '1';
+const writeIntegrationEnabled = process.env.RUN_INTEGRATION_WRITE === '1';
 
 test('integration test membutuhkan RUN_INTEGRATION_TESTS=1', { skip: integrationEnabled }, () => {
   // Integration test database sengaja tidak berjalan default agar test lokal
@@ -47,6 +48,70 @@ if (integrationEnabled) {
       if (response.statusCode !== 200) {
         throw new Error(`${name} returned ${response.statusCode}: ${JSON.stringify(response.body)}`);
       }
+    }
+  });
+
+  test('CRUD integration membutuhkan flag write dan akun admin test', {
+    skip: !writeIntegrationEnabled
+  }, async () => {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('CRUD integration test tidak boleh dijalankan dengan NODE_ENV=production');
+    }
+    const username = process.env.TEST_ADMIN_USERNAME;
+    const password = process.env.TEST_ADMIN_PASSWORD;
+    if (!username || !password) {
+      throw new Error('Set TEST_ADMIN_USERNAME dan TEST_ADMIN_PASSWORD untuk CRUD integration test');
+    }
+
+    const agent = request.agent(app);
+    const login = await agent.post('/api/login').send({ username, password });
+    if (login.statusCode !== 200) throw new Error(`Login test admin gagal: ${login.statusCode}`);
+
+    let markerId;
+    let polygonId;
+    let pipaId;
+    try {
+      const marker = await agent.post('/api/marker/create').send({
+        tipe: 'acc', coords: [-6.2, 106.8], dc_id: `TEST-${Date.now()}`,
+        keterangan: 'integration-test', zona: 'test', lokasi: 'test', elevation: 0
+      });
+      if (marker.statusCode !== 200) throw new Error(`Create marker gagal: ${marker.statusCode}`);
+      markerId = marker.body.ogr_fid || marker.body.id;
+      const markerUpdate = await agent.put(`/api/marker/update/acc/${markerId}`).send({
+        coords: [-6.2001, 106.8001], dc_id: `TEST-UPDATED-${Date.now()}`,
+        keterangan: 'integration-test-updated', zona: 'test', lokasi: 'test', elevation: 1
+      });
+      if (markerUpdate.statusCode !== 200) throw new Error(`Update marker gagal: ${markerUpdate.statusCode}`);
+
+      const polygon = await agent.post('/api/polygon/create').send({
+        coords: [[-6.2, 106.8], [-6.2, 106.8002], [-6.2002, 106.8002]],
+        nosamw: `TEST-${Date.now()}`, nosambckup: 'integration-test'
+      });
+      if (polygon.statusCode !== 200) throw new Error(`Create polygon gagal: ${polygon.statusCode}`);
+      polygonId = polygon.body.ogr_fid;
+      const polygonUpdate = await agent.put(`/api/polygon/update/${polygonId}`).send({
+        coords: [[-6.2, 106.8], [-6.2, 106.8003], [-6.2003, 106.8003]],
+        nosamw: `TEST-UPDATED-${Date.now()}`, nosambckup: 'integration-test'
+      });
+      if (polygonUpdate.statusCode !== 200) throw new Error(`Update polygon gagal: ${polygonUpdate.statusCode}`);
+
+      const pipa = await agent.post('/api/pipa/create').send({
+        coords: [[-6.2, 106.8], [-6.2003, 106.8003]], dc_id: `TEST-${Date.now()}`,
+        jenis: 'integration-test', keterangan: 'integration-test', lokasi: 'test',
+        status: 'test', diameter: 25, roughness: 1, zona: 'test'
+      });
+      if (pipa.statusCode !== 200) throw new Error(`Create pipa gagal: ${pipa.statusCode}`);
+      pipaId = pipa.body.ogr_fid;
+      const pipaUpdate = await agent.put(`/api/pipa/update/${pipaId}`).send({
+        coords: [[-6.2, 106.8], [-6.2004, 106.8004]], dc_id: `TEST-UPDATED-${Date.now()}`,
+        jenis: 'integration-test-updated', diameter: 25
+      });
+      if (pipaUpdate.statusCode !== 200) throw new Error(`Update pipa gagal: ${pipaUpdate.statusCode}`);
+    } finally {
+      if (pipaId) await agent.delete(`/api/pipa/delete/${pipaId}`);
+      if (polygonId) await agent.delete(`/api/polygon/delete/${polygonId}`);
+      if (markerId) await agent.delete(`/api/marker/delete/acc/${markerId}`);
+      await agent.post('/api/logout');
     }
   });
 }
