@@ -8,7 +8,10 @@
 - [x] Migrasikan koneksi database sebagai provider.
 - [x] Migrasikan endpoint read `GET /api/marker`.
 - [x] Tambahkan parity test dasar endpoint marker.
-- [ ] Migrasikan endpoint detail dan CRUD marker.
+- [x] Migrasikan endpoint detail dan CRUD marker.
+- [x] Migrasikan endpoint login, logout, dan session.
+- [x] Tambahkan parity test auth dan CRUD marker.
+- [ ] Jalankan parity test detail dan CRUD marker terhadap database test.
 
 Build lokal:
 

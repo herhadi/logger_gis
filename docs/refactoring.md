@@ -81,10 +81,14 @@ Urutan yang disarankan: marker, polygon, pipa, auth, lalu Telegram/monitoring.
 - [x] Tambahkan integration test read-only berbasis `supertest` yang opt-in.
 - [x] Tambahkan integration test untuk bbox/zoom dan selection stats.
 - [x] Tambahkan CRUD integration test opt-in dengan cleanup fixture.
+- [x] Tambahkan mode test login-only untuk diagnosis credential.
 - [x] Dokumentasikan command unit, read-only integration, dan CRUD integration test.
 - [x] Mulai scaffold migrasi backend NestJS.
 - [x] Tambahkan provider PostgreSQL dan endpoint read marker di NestJS.
 - [x] Tambahkan parity test read marker Express/NestJS.
+- [x] Migrasikan detail dan CRUD marker ke NestJS.
+- [x] Migrasikan auth/session dasar ke NestJS.
+- [x] Tambahkan parity test auth dan CRUD marker NestJS.
 - [x] Sediakan template environment untuk integration test staging.
 - [x] Lengkapi environment Render dengan `CRON_SECRET` dan `BASE_URL`.
 - [x] Terapkan patch dependency security dan verifikasi `npm audit` menjadi 0 vulnerability.

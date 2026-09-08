@@ -3,6 +3,7 @@ const test = require('node:test');
 const integrationEnabled = process.env.RUN_INTEGRATION_TESTS === '1';
 const writeIntegrationEnabled = process.env.RUN_INTEGRATION_WRITE === '1';
 const nestIntegrationEnabled = process.env.RUN_NEST_INTEGRATION === '1';
+const loginTestEnabled = process.env.RUN_LOGIN_TEST === '1';
 
 test('integration test membutuhkan RUN_INTEGRATION_TESTS=1', { skip: integrationEnabled }, () => {
   // Integration test database sengaja tidak berjalan default agar test lokal
@@ -86,26 +87,26 @@ if (integrationEnabled) {
 
       const polygon = await agent.post('/api/polygon/create').send({
         coords: [[-6.2, 106.8], [-6.2, 106.8002], [-6.2002, 106.8002]],
-        nosamw: `TEST-${Date.now()}`, nosambckup: 'integration-test'
+        nosamw: 'TESTPOLY01', nosambckup: 'itest'
       });
       if (polygon.statusCode !== 200) throw new Error(`Create polygon gagal: ${polygon.statusCode}`);
       polygonId = polygon.body.ogr_fid;
       const polygonUpdate = await agent.put(`/api/polygon/update/${polygonId}`).send({
         coords: [[-6.2, 106.8], [-6.2, 106.8003], [-6.2003, 106.8003]],
-        nosamw: `TEST-UPDATED-${Date.now()}`, nosambckup: 'integration-test'
+        nosamw: 'TESTPOLY02', nosambckup: 'itest'
       });
       if (polygonUpdate.statusCode !== 200) throw new Error(`Update polygon gagal: ${polygonUpdate.statusCode}`);
 
       const pipa = await agent.post('/api/pipa/create').send({
         coords: [[-6.2, 106.8], [-6.2003, 106.8003]], dc_id: `TEST-${Date.now()}`,
-        jenis: 'integration-test', keterangan: 'integration-test', lokasi: 'test',
+        jenis: 'itest', keterangan: 'itest', lokasi: 'test',
         status: 'test', diameter: 25, roughness: 1, zona: 'test'
       });
       if (pipa.statusCode !== 200) throw new Error(`Create pipa gagal: ${pipa.statusCode}`);
       pipaId = pipa.body.ogr_fid;
       const pipaUpdate = await agent.put(`/api/pipa/update/${pipaId}`).send({
         coords: [[-6.2, 106.8], [-6.2004, 106.8004]], dc_id: `TEST-UPDATED-${Date.now()}`,
-        jenis: 'integration-test-updated', diameter: 25
+        jenis: 'itest2', diameter: 25
       });
       if (pipaUpdate.statusCode !== 200) throw new Error(`Update pipa gagal: ${pipaUpdate.statusCode}`);
     } finally {
@@ -119,9 +120,9 @@ if (integrationEnabled) {
   test('NestJS marker endpoint memiliki parity dasar dengan Express', {
     skip: !nestIntegrationEnabled
   }, async () => {
-    const { NestFactory } = require('@nestjs/core');
-    const { AppModule } = require('../dist/backend-nest/app.module');
-    const nestApp = await NestFactory.create(AppModule, { logger: false });
+    const { createNestApp } = require('../dist/backend-nest/main');
+    const nestApp = await createNestApp();
+    nestApp.useLogger([]);
     await nestApp.init();
     try {
       const expressResponse = await request(app).get('/api/marker');
@@ -139,6 +140,67 @@ if (integrationEnabled) {
       }
     } finally {
       await nestApp.close();
+    }
+  });
+
+  test('NestJS auth dan CRUD marker berjalan dengan session', {
+    skip: !nestIntegrationEnabled || !writeIntegrationEnabled
+  }, async () => {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('NestJS CRUD integration test tidak boleh dijalankan dengan NODE_ENV=production');
+    }
+    const username = process.env.TEST_ADMIN_USERNAME;
+    const password = process.env.TEST_ADMIN_PASSWORD;
+    if (!username || !password) {
+      throw new Error('Set TEST_ADMIN_USERNAME dan TEST_ADMIN_PASSWORD untuk NestJS CRUD test');
+    }
+
+    const { createNestApp } = require('../dist/backend-nest/main');
+    const nestApp = await createNestApp();
+    nestApp.useLogger([]);
+    await nestApp.init();
+    const agent = request.agent(nestApp.getHttpServer());
+    let markerId;
+    try {
+      const login = await agent.post('/api/login').send({ username, password });
+      if (login.statusCode !== 200) throw new Error(`NestJS login gagal: ${login.statusCode}`);
+      const session = await agent.get('/api/session');
+      if (session.statusCode !== 200) throw new Error(`NestJS session gagal: ${session.statusCode}`);
+
+      const marker = await agent.post('/api/marker/create').send({
+        tipe: 'acc', coords: [-6.2, 106.8], dc_id: `NEST-TEST-${Date.now()}`,
+        keterangan: 'nestjs-integration-test', zona: 'test', lokasi: 'test', elevation: 0
+      });
+      if (marker.statusCode !== 201 && marker.statusCode !== 200) {
+        throw new Error(`NestJS create marker gagal: ${marker.statusCode}`);
+      }
+      markerId = marker.body.ogr_fid || marker.body.id;
+      if (!markerId) throw new Error('NestJS create marker tidak mengembalikan id');
+    } finally {
+      if (markerId) await agent.delete(`/api/marker/delete/acc/${markerId}`);
+      await agent.post('/api/logout');
+      await nestApp.close();
+    }
+  });
+}
+
+if (loginTestEnabled) {
+  const request = require('supertest');
+  const { createApp } = require('../backend/app');
+  const app = createApp();
+
+  test('login credential test', async () => {
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('Login test tidak boleh dijalankan dengan NODE_ENV=production');
+    }
+    const username = process.env.TEST_ADMIN_USERNAME;
+    const password = process.env.TEST_ADMIN_PASSWORD;
+    if (!username || !password) {
+      throw new Error('TEST_ADMIN_USERNAME atau TEST_ADMIN_PASSWORD kosong');
+    }
+    const response = await request(app).post('/api/login').send({ username, password });
+    if (response.statusCode !== 200) {
+      throw new Error(`Login gagal untuk user ${username}: ${response.statusCode} ${JSON.stringify(response.body)}`);
     }
   });
 }
