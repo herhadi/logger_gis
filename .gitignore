@@ -1,5 +1,6 @@
 # Folder dependencies (sangat berat, jangan diupload)
 node_modules/
+dist/
 
 # File konfigurasi rahasia (nanti untuk database)
 .env

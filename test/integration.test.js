@@ -2,6 +2,7 @@ const test = require('node:test');
 
 const integrationEnabled = process.env.RUN_INTEGRATION_TESTS === '1';
 const writeIntegrationEnabled = process.env.RUN_INTEGRATION_WRITE === '1';
+const nestIntegrationEnabled = process.env.RUN_NEST_INTEGRATION === '1';
 
 test('integration test membutuhkan RUN_INTEGRATION_TESTS=1', { skip: integrationEnabled }, () => {
   // Integration test database sengaja tidak berjalan default agar test lokal
@@ -112,6 +113,32 @@ if (integrationEnabled) {
       if (polygonId) await agent.delete(`/api/polygon/delete/${polygonId}`);
       if (markerId) await agent.delete(`/api/marker/delete/acc/${markerId}`);
       await agent.post('/api/logout');
+    }
+  });
+
+  test('NestJS marker endpoint memiliki parity dasar dengan Express', {
+    skip: !nestIntegrationEnabled
+  }, async () => {
+    const { NestFactory } = require('@nestjs/core');
+    const { AppModule } = require('../dist/backend-nest/app.module');
+    const nestApp = await NestFactory.create(AppModule, { logger: false });
+    await nestApp.init();
+    try {
+      const expressResponse = await request(app).get('/api/marker');
+      const nestResponse = await request(nestApp.getHttpServer()).get('/api/marker');
+      if (expressResponse.statusCode !== 200 || nestResponse.statusCode !== 200) {
+        throw new Error(`Marker parity status Express=${expressResponse.statusCode}, Nest=${nestResponse.statusCode}`);
+      }
+      if (!Array.isArray(expressResponse.body) || !Array.isArray(nestResponse.body)) {
+        throw new Error('Response marker harus berupa array');
+      }
+      for (const item of nestResponse.body.slice(0, 3)) {
+        if (!item.id || !item.tipe || !item.geometry || !Array.isArray(item.coords)) {
+          throw new Error('Shape response marker NestJS tidak sesuai kontrak');
+        }
+      }
+    } finally {
+      await nestApp.close();
     }
   });
 }

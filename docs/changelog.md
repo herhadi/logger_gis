@@ -37,6 +37,9 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Memperluas integration test untuk filter GIS dan statistik seleksi.
 - Menambahkan CRUD integration test opt-in dengan cleanup otomatis.
 - Mendokumentasikan cara menjalankan seluruh kategori test.
+- Memulai scaffold backend NestJS dengan health endpoint.
+- Menambahkan provider PostgreSQL dan modul read marker di NestJS.
+- Menambahkan parity test dasar endpoint marker Express dan NestJS.
 - Menambahkan template `.env.test.example` untuk integration test staging.
 - Menambahkan `CRON_SECRET` dan `BASE_URL` ke konfigurasi Render.
 - Memperbarui dependency transitif melalui `npm audit fix`; hasil audit menjadi 0 vulnerability.
