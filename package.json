@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "engines": {
-    "node": ">=20 <21"
+    "node": ">=24.15 <25"
   },
   "scripts": {
     "start": "node backend/server.prod.js",
@@ -43,5 +43,8 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "typescript": "^7.0.2"
+  },
+  "allowScripts": {
+    "bcrypt@6.0.0": true
   }
 }
