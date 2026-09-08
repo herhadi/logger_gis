@@ -12,8 +12,10 @@ export default function MapView() {
   useEffect(() => {
     let map;
     let disposed = false;
-    import('maplibre-gl').then(({ default: maplibregl }) => {
+    import('maplibre-gl').then(module => {
       if (disposed || !containerRef.current) return;
+      const maplibregl = module.default || module;
+      console.info('[Next MapLibre] initializing', { apiUrl: API_URL, maplibreVersion: maplibregl.getVersion?.() });
       map = new maplibregl.Map({
         container: containerRef.current,
         center: [109.7178, -6.9383],
@@ -42,6 +44,9 @@ export default function MapView() {
         setStatus(`Marker ${counts.markers} · Pipa ${counts.pipa} · Polygon ${counts.polygon}`);
       });
       map.on('error', event => console.error('[Next MapLibre] error', event.error));
+    }).catch(error => {
+      console.error('[Next MapLibre] initialization failed', error);
+      if (!disposed) setStatus(`Gagal memuat MapLibre: ${error.message}`);
     });
     return () => { disposed = true; map?.remove(); };
   }, []);
