@@ -144,6 +144,24 @@ if (integrationEnabled) {
     }
   });
 
+  test('NestJS marker vector tile menghasilkan PBF', {
+    skip: !nestIntegrationEnabled
+  }, async () => {
+    const { createNestApp } = require('../dist/backend-nest/main');
+    const nestApp = await createNestApp();
+    await nestApp.init();
+    try {
+      const tile = await request(nestApp.getHttpServer()).get('/api/marker/tiles/0/0/0.pbf');
+      if (tile.statusCode !== 200) throw new Error(`Marker tile gagal: ${tile.statusCode}`);
+      if (!String(tile.headers['content-type']).includes('application/vnd.mapbox-vector-tile')) {
+        throw new Error('Content-Type marker tile tidak sesuai');
+      }
+      if (!tile.body || tile.body.length === 0) throw new Error('Marker tile kosong');
+    } finally {
+      await nestApp.close();
+    }
+  });
+
   test('NestJS polygon dan selection memiliki parity dasar dengan Express', {
     skip: !nestIntegrationEnabled
   }, async () => {

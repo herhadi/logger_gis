@@ -38,6 +38,16 @@ export class MarkerService {
     }));
   }
 
+  async tile(zValue: string, xValue: string, yValue: string) {
+    const z = Number(zValue); const x = Number(xValue); const y = Number(yValue);
+    if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y) || z < 0 || z > 22 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) {
+      throw new HttpException({ error: 'Parameter tile tidak valid' }, HttpStatus.BAD_REQUEST);
+    }
+    const query = `WITH bounds AS (SELECT ST_TileEnvelope($1, $2, $3) AS tile), markers AS (SELECT ogr_fid AS id, shape AS geom, 'acc' AS tipe FROM gis_acc UNION ALL SELECT ogr_fid AS id, shape AS geom, 'reservoir' AS tipe FROM gis_reservoir UNION ALL SELECT ogr_fid AS id, shape AS geom, 'tank' AS tipe FROM gis_tank UNION ALL SELECT ogr_fid AS id, shape AS geom, 'valve' AS tipe FROM gis_valve) SELECT COALESCE(ST_AsMVT(tile_data, 'markers', 4096, 'geom'), ''::bytea) AS tile FROM (SELECT id, tipe, ST_AsMVTGeom(ST_Transform(markers.geom, 3857), bounds.tile, 4096, 64, TRUE) AS geom FROM markers CROSS JOIN bounds WHERE markers.geom && ST_Transform(bounds.tile, 4326) AND ST_Intersects(markers.geom, ST_Transform(bounds.tile, 4326))) AS tile_data WHERE geom IS NOT NULL`;
+    const { rows } = await this.db.query(query, [z, x, y]);
+    return rows[0]?.tile || Buffer.alloc(0);
+  }
+
   private table(type: string) {
     return markerTables[type];
   }

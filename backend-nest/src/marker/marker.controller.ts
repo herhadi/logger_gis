@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { MarkerService } from './marker.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 
@@ -9,6 +10,14 @@ export class MarkerController {
   @Get()
   findAll(@Query('bbox') bbox?: string) {
     return this.markerService.findAll(bbox);
+  }
+
+  @Get('tiles/:z/:x/:y.pbf')
+  async tile(@Param('z') z: string, @Param('x') x: string, @Param('y') y: string, @Res() response: Response) {
+    const tile = await this.markerService.tile(z, x, y);
+    response.setHeader('Content-Type', 'application/vnd.mapbox-vector-tile');
+    response.setHeader('Cache-Control', 'public, max-age=60');
+    return response.send(tile);
   }
 
   @Get(':tipe/:id')
