@@ -21,7 +21,8 @@ import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist
       },
       layers: [
         { id: 'osm', type: 'raster', source: 'osm' },
-        { id: 'polygon', type: 'fill', source: 'polygon', 'source-layer': 'polygon', paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.2, 'fill-outline-color': '#b45309' } },
+        { id: 'polygon', type: 'fill', source: 'polygon', 'source-layer': 'polygon', paint: { 'fill-color': '#f97316', 'fill-opacity': 0.5 } },
+        { id: 'polygon-outline', type: 'line', source: 'polygon', 'source-layer': 'polygon', paint: { 'line-color': '#7c2d12', 'line-width': ['interpolate', ['linear'], ['zoom'], 10, 0.5, 14, 1.5, 18, 3], 'line-opacity': 0.9 } },
         { id: 'pipa', type: 'line', source: 'pipa', 'source-layer': 'pipa', paint: { 'line-color': '#dc2626', 'line-width': 2 } },
         { id: 'markers', type: 'circle', source: 'markers', 'source-layer': 'markers', paint: { 'circle-radius': 5, 'circle-color': '#1769aa', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } }
       ]
