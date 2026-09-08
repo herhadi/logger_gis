@@ -5,7 +5,7 @@ services:
     plan: free
     region: singapore
     healthCheckPath: /health
-    buildCommand: npm install && npm run build:nest
+    buildCommand: npm install --include=dev && npm run build:nest
     startCommand: npm run start:nest
     envVars:
       - key: NODE_ENV
