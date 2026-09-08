@@ -24,6 +24,7 @@
 - [x] Tambahkan integration test Telegram live yang opt-in.
 - [x] Siapkan static frontend dan script runtime NestJS.
 - [x] Tambahkan endpoint vector tile marker berbasis PostGIS MVT.
+- [x] Tambahkan halaman proof-of-concept MapLibre untuk marker vector tile.
 - [x] Alihkan Render ke runtime NestJS setelah smoke test deployment.
 
 Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):
