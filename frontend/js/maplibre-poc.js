@@ -4,8 +4,8 @@ import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist
   const status = document.getElementById('map-status');
   const map = new maplibregl.Map({
     container: 'map',
-    center: [106.8, -6.2],
-    zoom: 11,
+    center: [109.7178, -6.9383],
+    zoom: 13,
     style: {
       version: 8,
       sources: {
@@ -29,7 +29,22 @@ import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist
   });
 
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
-  map.on('load', () => { status.textContent = 'Vector tile marker aktif'; });
+  map.on('load', () => {
+    status.textContent = 'Vector tile marker, pipa, polygon aktif';
+    console.info('[MapLibre] map loaded', { center: map.getCenter().toArray(), zoom: map.getZoom() });
+  });
+  map.on('sourcedata', event => {
+    if (!event.isSourceLoaded || !['markers', 'pipa', 'polygon'].includes(event.sourceId)) return;
+    console.info('[MapLibre] source loaded', { source: event.sourceId, zoom: map.getZoom() });
+  });
+  map.on('idle', () => {
+    const counts = {};
+    for (const layerId of ['markers', 'pipa', 'polygon']) {
+      counts[layerId] = map.queryRenderedFeatures({ layers: [layerId] }).length;
+    }
+    console.info('[MapLibre] rendered features', counts);
+    status.textContent = `Marker: ${counts.markers} | Pipa: ${counts.pipa} | Polygon: ${counts.polygon}`;
+  });
   map.on('click', 'markers', event => {
     const feature = event.features?.[0];
     if (!feature) return;
@@ -37,5 +52,10 @@ import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist
   });
   map.on('mouseenter', 'markers', () => { map.getCanvas().style.cursor = 'pointer'; });
   map.on('mouseleave', 'markers', () => { map.getCanvas().style.cursor = ''; });
-  map.on('error', event => { if (event.error) status.textContent = `Error peta: ${event.error.message}`; });
+  map.on('error', event => {
+    if (event.error) {
+      console.error('[MapLibre] error', event.error);
+      status.textContent = `Error peta: ${event.error.message}`;
+    }
+  });
 })();
