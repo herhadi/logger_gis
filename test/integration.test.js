@@ -166,6 +166,24 @@ if (integrationEnabled) {
     }
   });
 
+  test('NestJS pipa endpoint memiliki parity dasar dengan Express', {
+    skip: !nestIntegrationEnabled
+  }, async () => {
+    const { createNestApp } = require('../dist/backend-nest/main');
+    const nestApp = await createNestApp();
+    await nestApp.init();
+    try {
+      const expressResponse = await request(app).get('/api/pipa?bbox=-7,106,-6,107&zoom=12');
+      const nestResponse = await request(nestApp.getHttpServer()).get('/api/pipa?bbox=-7,106,-6,107&zoom=12');
+      if (expressResponse.statusCode !== 200 || nestResponse.statusCode !== 200) {
+        throw new Error(`Pipa parity status Express=${expressResponse.statusCode}, Nest=${nestResponse.statusCode}`);
+      }
+      if (!Array.isArray(nestResponse.body)) throw new Error('Response pipa NestJS harus berupa array');
+    } finally {
+      await nestApp.close();
+    }
+  });
+
   test('NestJS auth dan CRUD marker berjalan dengan session', {
     skip: !nestIntegrationEnabled || !writeIntegrationEnabled
   }, async () => {
@@ -184,6 +202,8 @@ if (integrationEnabled) {
     await nestApp.init();
     const agent = request.agent(nestApp.getHttpServer());
     let markerId;
+    let polygonId;
+    let pipaId;
     try {
       const login = await agent.post('/api/login').send({ username, password });
       if (login.statusCode !== 200) throw new Error(`NestJS login gagal: ${login.statusCode}`);
@@ -199,7 +219,38 @@ if (integrationEnabled) {
       }
       markerId = marker.body.ogr_fid || marker.body.id;
       if (!markerId) throw new Error('NestJS create marker tidak mengembalikan id');
+
+      const polygon = await agent.post('/api/polygon/create').send({
+        coords: [[-6.2, 106.8], [-6.2, 106.8002], [-6.2002, 106.8002]],
+        nosamw: 'NESTPOLY01', nosambckup: 'itest'
+      });
+      if (polygon.statusCode !== 201 && polygon.statusCode !== 200) {
+        throw new Error(`NestJS create polygon gagal: ${polygon.statusCode}`);
+      }
+      polygonId = polygon.body.ogr_fid;
+      const polygonUpdate = await agent.put(`/api/polygon/update/${polygonId}`).send({
+        coords: [[-6.2, 106.8], [-6.2, 106.8003], [-6.2003, 106.8003]],
+        nosamw: 'NESTPOLY02', nosambckup: 'itest'
+      });
+      if (polygonUpdate.statusCode !== 200) throw new Error(`NestJS update polygon gagal: ${polygonUpdate.statusCode}`);
+
+      const pipa = await agent.post('/api/pipa/create').send({
+        coords: [[-6.2, 106.8], [-6.2002, 106.8002]], dc_id: 'NESTPIPA',
+        jenis: 'itest', diameter: 25, zona: 'test', lokasi: 'test'
+      });
+      if (pipa.statusCode !== 201 && pipa.statusCode !== 200) {
+        throw new Error(`NestJS create pipa gagal: ${pipa.statusCode}`);
+      }
+      pipaId = pipa.body.ogr_fid || pipa.body.id;
+      if (!pipaId) throw new Error('NestJS create pipa tidak mengembalikan id');
+      const pipaUpdate = await agent.put(`/api/pipa/update/${pipaId}`).send({
+        coords: [[-6.2, 106.8], [-6.2003, 106.8003]], dc_id: 'NESTPIP2',
+        jenis: 'itest2', diameter: 32, zona: 'test', lokasi: 'test'
+      });
+      if (pipaUpdate.statusCode !== 200) throw new Error(`NestJS update pipa gagal: ${pipaUpdate.statusCode}`);
     } finally {
+      if (pipaId) await agent.delete(`/api/pipa/delete/${pipaId}`);
+      if (polygonId) await agent.delete(`/api/polygon/delete/${polygonId}`);
       if (markerId) await agent.delete(`/api/marker/delete/acc/${markerId}`);
       await agent.post('/api/logout');
       await nestApp.close();

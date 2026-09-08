@@ -13,7 +13,13 @@
 - [x] Tambahkan parity test auth dan CRUD marker.
 - [ ] Jalankan parity test detail dan CRUD marker terhadap database test.
 - [x] Migrasikan read polygon dan selection stats.
-- [ ] Migrasikan detail dan CRUD polygon.
+- [x] Migrasikan detail dan CRUD polygon.
+- [x] Tambahkan parity test CRUD polygon.
+- [ ] Jalankan parity test detail dan CRUD polygon terhadap database test.
+- [x] Migrasikan read, option, detail, dan CRUD pipa.
+- [x] Tambahkan parity test read pipa.
+- [x] Tambahkan parity test detail dan CRUD pipa.
+- [ ] Jalankan parity test detail dan CRUD pipa terhadap database test.
 
 Build lokal:
 

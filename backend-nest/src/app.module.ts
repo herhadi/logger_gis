@@ -4,9 +4,10 @@ import { DatabaseModule } from './database/database.module';
 import { MarkerModule } from './marker/marker.module';
 import { AuthModule } from './auth/auth.module';
 import { PolygonModule } from './polygon/polygon.module';
+import { PipaModule } from './pipa/pipa.module';
 
 @Module({
-  imports: [DatabaseModule, MarkerModule, AuthModule, PolygonModule],
+  imports: [DatabaseModule, MarkerModule, AuthModule, PolygonModule, PipaModule],
   controllers: [HealthController]
 })
 export class AppModule {}

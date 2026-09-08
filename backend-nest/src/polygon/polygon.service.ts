@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.module';
 
@@ -30,5 +30,39 @@ export class PolygonService {
     const { rows } = await this.db.query(sql, [JSON.stringify(geometry), includePoints, includeLines, includePolygons]);
     const row = rows[0] || {};
     return { pointCount: row.point_count || 0, lineCount: row.line_count || 0, polygonCount: row.polygon_count || 0 };
+  }
+
+  private polygonWkt(coords: any) {
+    if (!Array.isArray(coords) || coords.length < 3 || coords.some(point => !Array.isArray(point) || point.length < 2 || point.slice(0, 2).some(value => value === null || value === '' || !Number.isFinite(Number(value))))) return null;
+    const points = coords.map(([lat, lng]) => `${lng} ${lat}`);
+    if (points[points.length - 1] !== points[0]) points.push(points[0]);
+    return `POLYGON((${points.join(', ')}))`;
+  }
+
+  async findOne(id: string) {
+    const { rows } = await this.db.query(`SELECT ogr_fid AS id, nosamw, luas AS luas_input, lsval, nosambckup, ROUND(ST_Area(shape::geography)) AS luas_hitung FROM gis_srpolygon WHERE ogr_fid = $1`, [id]);
+    if (!rows.length) throw new HttpException({ error: 'Polygon tidak ditemukan' }, HttpStatus.NOT_FOUND);
+    return rows[0];
+  }
+
+  async create(body: any) {
+    const wkt = this.polygonWkt(body.coords);
+    if (!wkt) throw new HttpException({ error: 'Polygon minimal membutuhkan 3 titik' }, HttpStatus.BAD_REQUEST);
+    const { rows } = await this.db.query(`INSERT INTO gis_srpolygon (shape, nosamw, nosambckup, lsval, luas) VALUES (ST_MakeValid(ST_GeomFromText($1, 4326)), $2, $3, ROUND(ST_Area(ST_MakeValid(ST_GeomFromText($1, 4326))::geography)), CONCAT(ROUND(ST_Area(ST_MakeValid(ST_GeomFromText($1, 4326))::geography)), ' m²')) RETURNING ogr_fid, lsval AS luas_baru`, [wkt, body.nosamw, body.nosambckup || null]);
+    return { ogr_fid: rows[0].ogr_fid, success: true, message: 'Polygon berhasil disimpan', luas_m2: rows[0].luas_baru };
+  }
+
+  async update(id: string, body: any) {
+    const wkt = this.polygonWkt(body.coords);
+    if (!wkt) throw new HttpException({ error: 'Koordinat tidak valid' }, HttpStatus.BAD_REQUEST);
+    const result = await this.db.query(`UPDATE gis_srpolygon SET shape = ST_GeomFromText($1, 4326), nosamw = $2, nosambckup = $3, lsval = ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), luas = CONCAT(ROUND(ST_Area(ST_GeomFromText($1, 4326)::geography)), ' m²') WHERE ogr_fid = $4`, [wkt, body.nosamw, body.nosambckup || null, id]);
+    if (!result.rowCount) throw new HttpException({ error: 'Data tidak ditemukan' }, HttpStatus.NOT_FOUND);
+    return { success: true, message: 'Polygon berhasil diperbarui' };
+  }
+
+  async remove(id: string) {
+    const result = await this.db.query('DELETE FROM gis_srpolygon WHERE ogr_fid = $1', [id]);
+    if (!result.rowCount) throw new HttpException({ message: 'Polygon tidak ditemukan' }, HttpStatus.NOT_FOUND);
+    return { message: 'Polygon berhasil dihapus' };
   }
 }
