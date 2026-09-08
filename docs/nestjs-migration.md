@@ -20,6 +20,15 @@
 - [x] Tambahkan parity test read pipa.
 - [x] Tambahkan parity test detail dan CRUD pipa.
 - [ ] Jalankan parity test detail dan CRUD pipa terhadap database test.
+- [x] Migrasikan webhook, command admin, dan cron Telegram.
+- [x] Tambahkan integration test Telegram live yang opt-in.
+
+Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):
+
+```bash
+npm run build:nest
+RUN_INTEGRATION_TESTS=1 RUN_NEST_INTEGRATION=1 RUN_TELEGRAM_INTEGRATION=1 NODE_ENV=development npm test
+```
 
 Build lokal:
 

@@ -3,6 +3,7 @@ const test = require('node:test');
 const integrationEnabled = process.env.RUN_INTEGRATION_TESTS === '1';
 const writeIntegrationEnabled = process.env.RUN_INTEGRATION_WRITE === '1';
 const nestIntegrationEnabled = process.env.RUN_NEST_INTEGRATION === '1';
+const telegramIntegrationEnabled = process.env.RUN_TELEGRAM_INTEGRATION === '1';
 const loginTestEnabled = process.env.RUN_LOGIN_TEST === '1';
 
 test('integration test membutuhkan RUN_INTEGRATION_TESTS=1', { skip: integrationEnabled }, () => {
@@ -252,6 +253,33 @@ if (integrationEnabled) {
       if (pipaId) await agent.delete(`/api/pipa/delete/${pipaId}`);
       if (polygonId) await agent.delete(`/api/polygon/delete/${polygonId}`);
       if (markerId) await agent.delete(`/api/marker/delete/acc/${markerId}`);
+      await agent.post('/api/logout');
+      await nestApp.close();
+    }
+  });
+
+  test('NestJS Telegram admin dan cron berjalan', {
+    skip: !nestIntegrationEnabled || !telegramIntegrationEnabled
+  }, async () => {
+    const username = process.env.TEST_ADMIN_USERNAME;
+    const password = process.env.TEST_ADMIN_PASSWORD;
+    if (!username || !password || !process.env.CRON_SECRET) {
+      throw new Error('TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD, dan CRON_SECRET wajib diisi');
+    }
+    const { createNestApp } = require('../dist/backend-nest/main');
+    const nestApp = await createNestApp();
+    await nestApp.init();
+    const agent = request.agent(nestApp.getHttpServer());
+    try {
+      const login = await agent.post('/api/login').send({ username, password });
+      if (login.statusCode !== 200) throw new Error(`Login Telegram test gagal: ${login.statusCode}`);
+      const notification = await agent.get('/api/test-telegram');
+      if (notification.statusCode !== 200) throw new Error(`Test Telegram gagal: ${notification.statusCode}`);
+      const monitor = await agent.get('/api/test-monitor');
+      if (monitor.statusCode !== 200) throw new Error(`Monitor Telegram gagal: ${monitor.statusCode}`);
+      const cron = await request(nestApp.getHttpServer()).get('/api/cron').set('x-cron-secret', process.env.CRON_SECRET);
+      if (cron.statusCode !== 200) throw new Error(`Cron Telegram gagal: ${cron.statusCode}`);
+    } finally {
       await agent.post('/api/logout');
       await nestApp.close();
     }
