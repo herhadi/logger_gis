@@ -1,3 +1,5 @@
+import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist/maplibre-gl.mjs';
+
 (() => {
   const status = document.getElementById('map-status');
   const map = new maplibregl.Map({
