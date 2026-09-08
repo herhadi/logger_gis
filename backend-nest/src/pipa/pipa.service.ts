@@ -23,6 +23,14 @@ export class PipaService {
     return rows;
   }
 
+  async tile(zValue: string, xValue: string, yValue: string) {
+    const z = Number(zValue); const x = Number(xValue); const y = Number(yValue);
+    if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y) || z < 0 || z > 22 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) throw new HttpException({ error: 'Parameter tile tidak valid' }, HttpStatus.BAD_REQUEST);
+    const query = `WITH bounds AS (SELECT ST_TileEnvelope($1, $2, $3) AS tile) SELECT COALESCE(ST_AsMVT(tile_data, 'pipa', 4096, 'geom'), ''::bytea) AS tile FROM (SELECT ogr_fid AS id, diameter, ST_AsMVTGeom(ST_Transform(shape, 3857), bounds.tile, 4096, 64, TRUE) AS geom FROM gis_pipa CROSS JOIN bounds WHERE shape && ST_Transform(bounds.tile, 4326) AND ST_Intersects(shape, ST_Transform(bounds.tile, 4326))) AS tile_data WHERE geom IS NOT NULL`;
+    const { rows } = await this.db.query(query, [z, x, y]);
+    return rows[0]?.tile || Buffer.alloc(0);
+  }
+
   async options() {
     const [diameter, jenis] = await Promise.all([
       this.db.query('SELECT DISTINCT diameter FROM gis_pipa WHERE diameter IS NOT NULL ORDER BY diameter DESC'),

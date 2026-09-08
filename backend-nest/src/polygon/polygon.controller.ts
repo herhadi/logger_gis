@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { PolygonService } from './polygon.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 
@@ -6,6 +7,12 @@ import { SessionAuthGuard } from '../auth/session-auth.guard';
 export class PolygonController {
   constructor(private readonly polygonService: PolygonService) {}
   @Get('api/polygon') findAll(@Query('bbox') bbox?: string, @Query('zoom') zoom?: string) { return this.polygonService.findAll(bbox, zoom); }
+  @Get('api/polygon/tiles/:z/:x/:y.pbf')
+  async tile(@Param('z') z: string, @Param('x') x: string, @Param('y') y: string, @Res() response: Response) {
+    response.setHeader('Content-Type', 'application/vnd.mapbox-vector-tile');
+    response.setHeader('Cache-Control', 'public, max-age=60');
+    return response.send(await this.polygonService.tile(z, x, y));
+  }
   @Post('api/selection/stats') selectionStats(@Body() body: any) { return this.polygonService.selectionStats(body); }
 
   @Get('api/polygon/:id')

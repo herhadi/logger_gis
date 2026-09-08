@@ -15,10 +15,14 @@ import * as maplibregl from 'https://cdn.jsdelivr.net/npm/maplibre-gl@6.8.0/dist
           tileSize: 256,
           attribution: '© OpenStreetMap contributors'
         },
-        markers: { type: 'vector', tiles: [`${location.origin}/api/marker/tiles/{z}/{x}/{y}.pbf`] }
+        markers: { type: 'vector', tiles: [`${location.origin}/api/marker/tiles/{z}/{x}/{y}.pbf`] },
+        pipa: { type: 'vector', tiles: [`${location.origin}/api/pipa/tiles/{z}/{x}/{y}.pbf`] },
+        polygon: { type: 'vector', tiles: [`${location.origin}/api/polygon/tiles/{z}/{x}/{y}.pbf`] }
       },
       layers: [
         { id: 'osm', type: 'raster', source: 'osm' },
+        { id: 'polygon', type: 'fill', source: 'polygon', 'source-layer': 'polygon', paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.2, 'fill-outline-color': '#b45309' } },
+        { id: 'pipa', type: 'line', source: 'pipa', 'source-layer': 'pipa', paint: { 'line-color': '#dc2626', 'line-width': 2 } },
         { id: 'markers', type: 'circle', source: 'markers', 'source-layer': 'markers', paint: { 'circle-radius': 5, 'circle-color': '#1769aa', 'circle-stroke-color': '#fff', 'circle-stroke-width': 1 } }
       ]
     }

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res, UseGuards } from '@nestjs/common';
+import { Response } from 'express';
 import { PipaService } from './pipa.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
 
@@ -9,6 +10,13 @@ export class PipaController {
   @Get()
   findAll(@Query('bbox') bbox?: string, @Query('zoom') zoom?: string) {
     return this.pipaService.findAll(bbox, zoom);
+  }
+
+  @Get('tiles/:z/:x/:y.pbf')
+  async tile(@Param('z') z: string, @Param('x') x: string, @Param('y') y: string, @Res() response: Response) {
+    response.setHeader('Content-Type', 'application/vnd.mapbox-vector-tile');
+    response.setHeader('Cache-Control', 'public, max-age=60');
+    return response.send(await this.pipaService.tile(z, x, y));
   }
 
   @Get('option')
