@@ -12,6 +12,8 @@
 - [x] Migrasikan endpoint login, logout, dan session.
 - [x] Tambahkan parity test auth dan CRUD marker.
 - [ ] Jalankan parity test detail dan CRUD marker terhadap database test.
+- [x] Migrasikan read polygon dan selection stats.
+- [ ] Migrasikan detail dan CRUD polygon.
 
 Build lokal:
 

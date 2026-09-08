@@ -143,6 +143,29 @@ if (integrationEnabled) {
     }
   });
 
+  test('NestJS polygon dan selection memiliki parity dasar dengan Express', {
+    skip: !nestIntegrationEnabled
+  }, async () => {
+    const { createNestApp } = require('../dist/backend-nest/main');
+    const nestApp = await createNestApp();
+    await nestApp.init();
+    try {
+      const polygon = await request(app).get('/api/polygon?bbox=-7,106,-6,107&zoom=12');
+      const nestPolygon = await request(nestApp.getHttpServer()).get('/api/polygon?bbox=-7,106,-6,107&zoom=12');
+      const body = { geometry: { type: 'Polygon', coordinates: [[[106, -7], [107, -7], [107, -6], [106, -6], [106, -7]]] } };
+      const selection = await request(app).post('/api/selection/stats').send(body);
+      const nestSelection = await request(nestApp.getHttpServer()).post('/api/selection/stats').send(body);
+      if (polygon.statusCode !== 200 || nestPolygon.statusCode !== 200 || selection.statusCode !== 200 || nestSelection.statusCode !== 201) {
+        throw new Error(`Polygon/selection parity status Express=${polygon.statusCode}/${selection.statusCode}, Nest=${nestPolygon.statusCode}/${nestSelection.statusCode}`);
+      }
+      if (!Array.isArray(nestPolygon.body) || typeof nestSelection.body.pointCount !== 'number') {
+        throw new Error('Shape response polygon/selection NestJS tidak sesuai kontrak');
+      }
+    } finally {
+      await nestApp.close();
+    }
+  });
+
   test('NestJS auth dan CRUD marker berjalan dengan session', {
     skip: !nestIntegrationEnabled || !writeIntegrationEnabled
   }, async () => {
