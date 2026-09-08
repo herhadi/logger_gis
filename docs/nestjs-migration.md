@@ -22,6 +22,8 @@
 - [ ] Jalankan parity test detail dan CRUD pipa terhadap database test.
 - [x] Migrasikan webhook, command admin, dan cron Telegram.
 - [x] Tambahkan integration test Telegram live yang opt-in.
+- [x] Siapkan static frontend dan script runtime NestJS.
+- [ ] Alihkan Render ke runtime NestJS setelah smoke test deployment.
 
 Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):
 
