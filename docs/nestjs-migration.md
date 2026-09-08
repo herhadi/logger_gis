@@ -26,6 +26,7 @@
 - [x] Tambahkan endpoint vector tile marker berbasis PostGIS MVT.
 - [x] Tambahkan halaman proof-of-concept MapLibre untuk marker vector tile.
 - [x] Tambahkan vector tile pipa dan polygon ke proof-of-concept MapLibre.
+- [x] Buat fondasi frontend Next.js terpisah untuk migrasi bertahap.
 - [x] Alihkan Render ke runtime NestJS setelah smoke test deployment.
 
 Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):

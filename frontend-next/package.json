@@ -1,0 +1,16 @@
+{
+  "name": "gis-watermeter-frontend",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@maplibre/maplibre-gl-style-spec": "^24.2.0",
+    "maplibre-gl": "^6.8.0",
+    "next": "^16.0.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  }
+}
