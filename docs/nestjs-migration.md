@@ -15,15 +15,15 @@
 - [x] Migrasikan read polygon dan selection stats.
 - [x] Migrasikan detail dan CRUD polygon.
 - [x] Tambahkan parity test CRUD polygon.
-- [ ] Jalankan parity test detail dan CRUD polygon terhadap database test.
+- [x] Jalankan parity test detail dan CRUD polygon terhadap database test.
 - [x] Migrasikan read, option, detail, dan CRUD pipa.
 - [x] Tambahkan parity test read pipa.
 - [x] Tambahkan parity test detail dan CRUD pipa.
-- [ ] Jalankan parity test detail dan CRUD pipa terhadap database test.
+- [x] Jalankan parity test detail dan CRUD pipa terhadap database test.
 - [x] Migrasikan webhook, command admin, dan cron Telegram.
 - [x] Tambahkan integration test Telegram live yang opt-in.
 - [x] Siapkan static frontend dan script runtime NestJS.
-- [ ] Alihkan Render ke runtime NestJS setelah smoke test deployment.
+- [x] Alihkan Render ke runtime NestJS setelah smoke test deployment.
 
 Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):
 

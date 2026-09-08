@@ -2,6 +2,26 @@
 
 Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` dan kelompokkan perubahan berdasarkan kategori.
 
+## [1.1.0-nestjs] - 2026-09-08
+
+### Added
+
+- Menambahkan modul NestJS untuk auth/session, marker, polygon, pipa, dan Telegram.
+- Menambahkan parity test integration untuk endpoint GIS dan operasi Telegram live.
+- Menambahkan penyajian frontend statis dari runtime NestJS.
+
+### Changed
+
+- Mengalihkan runtime Render dari Express ke NestJS.
+- Menambahkan build dependency development pada proses build Render.
+- Menambahkan smoke test production untuk health, frontend, dan endpoint marker.
+
+### Verification
+
+- Integration test production: lulus.
+- Smoke test Render: `/health` dan `/login.html` merespons `200`.
+- Response health mengidentifikasi framework sebagai NestJS.
+
 ## [Unreleased]
 
 ### Changed
