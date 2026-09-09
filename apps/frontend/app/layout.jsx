@@ -1,4 +1,5 @@
 import './globals.css';
+import ToastProvider from '../components/toast-provider';
 
 export const metadata = {
   title: 'GIS Watermeter',
@@ -6,5 +7,5 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
-  return <html lang="id"><body>{children}</body></html>;
+  return <html lang="id"><body><ToastProvider>{children}</ToastProvider></body></html>;
 }
