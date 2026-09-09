@@ -4,6 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { apiFetch } from '../lib/api';
 import { pipeColorExpression } from '../lib/pipe-legend';
+import MapboxDraw from '@mapbox/mapbox-gl-draw';
+import '@mapbox/mapbox-gl-draw/dist/mapbox-gl-draw.css';
+import { useToast } from './toast-provider';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -12,6 +15,8 @@ export default function MapView({ adminMode = false }) {
   const [status, setStatus] = useState('Memuat peta...');
   const [visibility, setVisibility] = useState({ markers: true, pipa: true, polygon: true });
   const mapRef = useRef(null);
+  const drawRef = useRef(null);
+  const { showToast } = useToast();
 
   function toggleLayer(id) {
     const next = !visibility[id];
@@ -49,6 +54,18 @@ export default function MapView({ adminMode = false }) {
       });
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl(), 'top-right');
+      if (adminMode) {
+        const draw = new MapboxDraw({
+          displayControlsDefault: false,
+          controls: { point: true, line_string: true, polygon: true, trash: true },
+          defaultMode: 'simple_select'
+        });
+        drawRef.current = draw;
+        map.addControl(draw, 'top-left');
+        map.on('draw.create', event => { console.info('[Next Draw] create', event.features); showToast('Geometri baru dibuat. Isi detail lalu simpan.', 'info'); });
+        map.on('draw.update', event => console.info('[Next Draw] update', event.features));
+        map.on('draw.delete', event => console.info('[Next Draw] delete', event.features));
+      }
       map.on('load', () => setStatus('MapLibre aktif'));
       apiFetch('/api/pipa/option').then(data => {
         if (map.getLayer('pipa')) map.setPaintProperty('pipa', 'line-color', pipeColorExpression(data.diameter || []));
@@ -66,8 +83,8 @@ export default function MapView({ adminMode = false }) {
         console.error('[Next MapLibre] initialization failed', error);
         if (!disposed) setStatus(`Gagal memuat MapLibre: ${error.message}`);
       });
-    return () => { disposed = true; map?.remove(); mapRef.current = null; };
-  }, []);
+    return () => { disposed = true; if (map && drawRef.current) map.removeControl(drawRef.current); map?.remove(); mapRef.current = null; drawRef.current = null; };
+  }, [adminMode, showToast]);
 
   return <section className="map-shell"><div ref={containerRef} className="map" /><div className="map-status">{status}</div>
     {adminMode && <div className="layer-control"><strong>Layer</strong>{[['markers', 'Marker'], ['pipa', 'Pipa'], ['polygon', 'Polygon']].map(([id, label]) => <label key={id}><input type="checkbox" checked={visibility[id]} onChange={() => toggleLayer(id)} />{label}</label>)}</div>}
