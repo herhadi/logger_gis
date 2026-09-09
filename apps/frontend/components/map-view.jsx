@@ -5,9 +5,19 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
-export default function MapView() {
+export default function MapView({ adminMode = false }) {
   const containerRef = useRef(null);
   const [status, setStatus] = useState('Memuat peta...');
+  const [visibility, setVisibility] = useState({ markers: true, pipa: true, polygon: true });
+  const mapRef = useRef(null);
+
+  function toggleLayer(id) {
+    const next = !visibility[id];
+    setVisibility(current => ({ ...current, [id]: next }));
+    const layerId = id === 'markers' ? 'markers' : id;
+    const map = mapRef.current;
+    if (map?.getLayer(layerId)) map.setLayoutProperty(layerId, 'visibility', next ? 'visible' : 'none');
+  }
 
   useEffect(() => {
     let map;
@@ -35,6 +45,7 @@ export default function MapView() {
           ]
         }
       });
+      mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl(), 'top-right');
       map.on('load', () => setStatus('MapLibre aktif'));
       map.on('idle', () => {
@@ -50,8 +61,10 @@ export default function MapView() {
         console.error('[Next MapLibre] initialization failed', error);
         if (!disposed) setStatus(`Gagal memuat MapLibre: ${error.message}`);
       });
-    return () => { disposed = true; map?.remove(); };
+    return () => { disposed = true; map?.remove(); mapRef.current = null; };
   }, []);
 
-  return <section className="map-shell"><div ref={containerRef} className="map" /><div className="map-status">{status}</div></section>;
+  return <section className="map-shell"><div ref={containerRef} className="map" /><div className="map-status">{status}</div>
+    {adminMode && <div className="layer-control"><strong>Layer</strong>{[['markers', 'Marker'], ['pipa', 'Pipa'], ['polygon', 'Polygon']].map(([id, label]) => <label key={id}><input type="checkbox" checked={visibility[id]} onChange={() => toggleLayer(id)} />{label}</label>)}</div>}
+  </section>;
 }
