@@ -12,7 +12,9 @@ export default function PolygonEditorPanel() {
     const onDraw = event => { if (event.detail?.geometry?.type === 'Polygon') { setFeature(event.detail); setEditingId(null); setForm(initial); } };
     const onSelect = async event => { const selected = event.detail; setFeature(selected); setEditingId(String(selected.properties.id)); try { setForm({ ...initial, ...(await apiFetch(`/api/polygon/${selected.properties.id}`)) }); } catch (error) { showToast(error.message || 'Gagal memuat detail polygon', 'error'); setFeature(null); } };
     window.addEventListener('gis:draw-created', onDraw); window.addEventListener('gis:polygon-selected', onSelect);
-    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:polygon-selected', onSelect); };
+    const onGeometry = event => { if (event.detail?.properties?.__editorType === 'polygon') setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
+    window.addEventListener('gis:geometry-updated', onGeometry);
+    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:polygon-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
   }, [showToast]);
   if (!feature) return null;
   const update = event => setForm(current => ({ ...current, [event.target.name]: event.target.value }));

@@ -58,31 +58,49 @@ export default function MapView({ adminMode = false }) {
         const draw = new MapboxDraw({
           displayControlsDefault: false,
           controls: { point: true, line_string: true, polygon: true, trash: true },
-          defaultMode: 'simple_select'
+          defaultMode: 'simple_select',
+          styles: [
+            { id: 'gl-draw-polygon-fill-inactive', type: 'fill', filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']], paint: { 'fill-color': '#f97316', 'fill-opacity': 0.35 } },
+            { id: 'gl-draw-polygon-fill-active', type: 'fill', filter: ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']], paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.45 } },
+            { id: 'gl-draw-polygon-stroke-inactive', type: 'line', filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'Polygon']], paint: { 'line-color': '#f97316', 'line-width': 2 } },
+            { id: 'gl-draw-polygon-stroke-active', type: 'line', filter: ['all', ['==', 'active', 'true'], ['==', '$type', 'Polygon']], paint: { 'line-color': '#ea580c', 'line-width': 3, 'line-dasharray': [1.5, 1.5] } },
+            { id: 'gl-draw-line-inactive', type: 'line', filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'LineString']], paint: { 'line-color': '#dc2626', 'line-width': 3 } },
+            { id: 'gl-draw-line-active', type: 'line', filter: ['all', ['==', 'active', 'true'], ['==', '$type', 'LineString']], paint: { 'line-color': '#f59e0b', 'line-width': 4, 'line-dasharray': [1.5, 1.5] } },
+            { id: 'gl-draw-point-active', type: 'circle', filter: ['all', ['==', 'active', 'true'], ['==', '$type', 'Point']], paint: { 'circle-radius': 8, 'circle-color': '#f59e0b', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } },
+            { id: 'gl-draw-point-inactive', type: 'circle', filter: ['all', ['==', 'active', 'false'], ['==', '$type', 'Point']], paint: { 'circle-radius': 6, 'circle-color': '#2563eb', 'circle-stroke-color': '#fff', 'circle-stroke-width': 2 } },
+            { id: 'gl-draw-vertex-active', type: 'circle', filter: ['all', ['==', 'meta', 'vertex'], ['==', 'active', 'true']], paint: { 'circle-radius': 5, 'circle-color': '#fff', 'circle-stroke-color': '#ea580c', 'circle-stroke-width': 2 } },
+            { id: 'gl-draw-midpoint', type: 'circle', filter: ['all', ['==', 'meta', 'midpoint']], paint: { 'circle-radius': 4, 'circle-color': '#fff', 'circle-stroke-color': '#f97316', 'circle-stroke-width': 2 } }
+          ]
         });
         drawRef.current = draw;
         map.addControl(draw, 'top-left');
         map.on('draw.create', event => { console.info('[Next Draw] create', event.features); window.dispatchEvent(new CustomEvent('gis:draw-created', { detail: event.features[0] })); showToast('Geometri baru dibuat. Isi detail lalu simpan.', 'info'); });
-        map.on('draw.update', event => console.info('[Next Draw] update', event.features));
+        map.on('draw.update', event => { console.info('[Next Draw] update', event.features); const feature = event.features?.[0]; if (feature) window.dispatchEvent(new CustomEvent('gis:geometry-updated', { detail: feature })); });
         map.on('draw.delete', event => console.info('[Next Draw] delete', event.features));
         map.on('click', 'pipa', event => {
           const feature = event.features?.[0];
           if (!feature?.properties?.id || !feature.geometry) return;
-          window.dispatchEvent(new CustomEvent('gis:pipa-selected', { detail: feature }));
+          const drawFeature = { ...feature, id: `edit-pipa-${feature.properties.id}`, properties: { ...feature.properties, __editorType: 'pipa', __editorId: feature.properties.id } };
+          const [drawId] = drawRef.current.add(drawFeature); drawRef.current.changeMode('direct_select', { featureId: drawId });
+          window.dispatchEvent(new CustomEvent('gis:pipa-selected', { detail: drawFeature }));
         });
         map.on('mouseenter', 'pipa', () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', 'pipa', () => { map.getCanvas().style.cursor = ''; });
         map.on('click', 'markers', event => {
           const feature = event.features?.[0];
           if (!feature?.properties?.id || !feature.geometry) return;
-          window.dispatchEvent(new CustomEvent('gis:marker-selected', { detail: feature }));
+          const drawFeature = { ...feature, id: `edit-marker-${feature.properties.tipe}-${feature.properties.id}`, properties: { ...feature.properties, __editorType: 'marker', __editorId: feature.properties.id } };
+          const [drawId] = drawRef.current.add(drawFeature); drawRef.current.changeMode('direct_select', { featureId: drawId });
+          window.dispatchEvent(new CustomEvent('gis:marker-selected', { detail: drawFeature }));
         });
         map.on('mouseenter', 'markers', () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', 'markers', () => { map.getCanvas().style.cursor = ''; });
         map.on('click', 'polygon', event => {
           const feature = event.features?.[0];
           if (!feature?.properties?.id || !feature.geometry) return;
-          window.dispatchEvent(new CustomEvent('gis:polygon-selected', { detail: feature }));
+          const drawFeature = { ...feature, id: `edit-polygon-${feature.properties.id}`, properties: { ...feature.properties, __editorType: 'polygon', __editorId: feature.properties.id } };
+          const [drawId] = drawRef.current.add(drawFeature); drawRef.current.changeMode('direct_select', { featureId: drawId });
+          window.dispatchEvent(new CustomEvent('gis:polygon-selected', { detail: drawFeature }));
         });
         map.on('mouseenter', 'polygon', () => { map.getCanvas().style.cursor = 'pointer'; });
         map.on('mouseleave', 'polygon', () => { map.getCanvas().style.cursor = ''; });

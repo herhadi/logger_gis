@@ -24,8 +24,10 @@ export default function PipeEditorPanel() {
     };
     window.addEventListener('gis:draw-created', onDraw);
     window.addEventListener('gis:pipa-selected', onSelect);
+    const onGeometry = event => { if (event.detail?.properties?.__editorType === 'pipa') setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
+    window.addEventListener('gis:geometry-updated', onGeometry);
     apiFetch('/api/pipa/option').then(setOptions).catch(error => console.error('Gagal memuat opsi pipa:', error));
-    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:pipa-selected', onSelect); };
+    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:pipa-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
   }, [showToast]);
 
   if (!feature) return null;

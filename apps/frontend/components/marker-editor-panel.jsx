@@ -20,7 +20,9 @@ export default function MarkerEditorPanel() {
       catch (error) { showToast(error.message || 'Gagal memuat detail marker', 'error'); setFeature(null); }
     };
     window.addEventListener('gis:draw-created', onDraw); window.addEventListener('gis:marker-selected', onSelect);
-    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:marker-selected', onSelect); };
+    const onGeometry = event => { if (event.detail?.properties?.__editorType === 'marker') setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
+    window.addEventListener('gis:geometry-updated', onGeometry);
+    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:marker-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
   }, [showToast]);
   if (!feature) return null;
   const update = event => setForm(current => ({ ...current, [event.target.name]: event.target.value }));
