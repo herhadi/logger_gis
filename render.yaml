@@ -4,6 +4,12 @@ services:
     runtime: node
     plan: free
     region: singapore
+    buildFilter:
+      paths:
+        - apps/backend/**
+        - package.json
+        - package-lock.json
+        - render.yaml
     healthCheckPath: /health
     buildCommand: npm install --include=dev && npm run build:nest
     startCommand: npm run start:nest
