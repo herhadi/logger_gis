@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 import 'maplibre-gl/dist/maplibre-gl.css';
+import { apiFetch } from '../lib/api';
+import { pipeColorExpression } from '../lib/pipe-legend';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
 
@@ -48,6 +50,9 @@ export default function MapView({ adminMode = false }) {
       mapRef.current = map;
       map.addControl(new maplibregl.NavigationControl(), 'top-right');
       map.on('load', () => setStatus('MapLibre aktif'));
+      apiFetch('/api/pipa/option').then(data => {
+        if (map.getLayer('pipa')) map.setPaintProperty('pipa', 'line-color', pipeColorExpression(data.diameter || []));
+      }).catch(error => console.error('[Next MapLibre] gagal memuat warna diameter pipa', error));
       map.on('idle', () => {
         const counts = Object.fromEntries(['markers', 'pipa', 'polygon'].map(id => [id, map.queryRenderedFeatures({ layers: [id] }).length]));
         console.info('[Next MapLibre] rendered features', counts);
