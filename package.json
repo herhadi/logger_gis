@@ -3,15 +3,15 @@
   "version": "1.0.0",
   "description": "",
   "private": true,
-  "workspaces": ["frontend-next"],
+  "workspaces": ["apps/frontend"],
   "main": "index.js",
   "engines": {
     "node": ">=24.15 <25"
   },
   "scripts": {
     "start": "node backend/server.prod.js",
-    "start:nest": "node dist/backend-nest/main.js",
-    "build:nest": "tsc -p backend-nest/tsconfig.json",
+    "start:nest": "node dist/backend/main.js",
+    "build:nest": "tsc -p apps/backend/tsconfig.json",
     "test": "node --test"
   },
   "keywords": [],

@@ -29,9 +29,9 @@
 - [x] Buat fondasi frontend Next.js terpisah untuk migrasi bertahap.
 - [x] Deklarasikan workspace monorepo untuk frontend Next.js.
 - [x] Pisahkan template environment backend dan frontend.
-- [x] Tambahkan template environment khusus `backend-nest`.
-- [ ] Pindahkan backend NestJS ke `apps/backend` setelah service Render baru tervalidasi.
-- [ ] Pindahkan frontend Next.js ke `apps/frontend` setelah deployment Vercel tervalidasi.
+- [x] Tambahkan template environment khusus `apps/backend`.
+- [x] Pindahkan backend NestJS ke `apps/backend`.
+- [x] Pindahkan frontend Next.js ke `apps/frontend`.
 - [x] Alihkan Render ke runtime NestJS setelah smoke test deployment.
 
 Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):

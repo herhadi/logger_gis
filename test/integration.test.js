@@ -121,7 +121,7 @@ if (integrationEnabled) {
   test('NestJS marker endpoint memiliki parity dasar dengan Express', {
     skip: !nestIntegrationEnabled
   }, async () => {
-    const { createNestApp } = require('../dist/backend-nest/main');
+    const { createNestApp } = require('../dist/backend/main');
     const nestApp = await createNestApp();
     nestApp.useLogger([]);
     await nestApp.init();
@@ -147,7 +147,7 @@ if (integrationEnabled) {
   test('NestJS marker vector tile menghasilkan PBF', {
     skip: !nestIntegrationEnabled
   }, async () => {
-    const { createNestApp } = require('../dist/backend-nest/main');
+    const { createNestApp } = require('../dist/backend/main');
     const nestApp = await createNestApp();
     await nestApp.init();
     try {
@@ -165,7 +165,7 @@ if (integrationEnabled) {
   test('NestJS polygon dan selection memiliki parity dasar dengan Express', {
     skip: !nestIntegrationEnabled
   }, async () => {
-    const { createNestApp } = require('../dist/backend-nest/main');
+    const { createNestApp } = require('../dist/backend/main');
     const nestApp = await createNestApp();
     await nestApp.init();
     try {
@@ -188,7 +188,7 @@ if (integrationEnabled) {
   test('NestJS pipa endpoint memiliki parity dasar dengan Express', {
     skip: !nestIntegrationEnabled
   }, async () => {
-    const { createNestApp } = require('../dist/backend-nest/main');
+    const { createNestApp } = require('../dist/backend/main');
     const nestApp = await createNestApp();
     await nestApp.init();
     try {
@@ -215,7 +215,7 @@ if (integrationEnabled) {
       throw new Error('Set TEST_ADMIN_USERNAME dan TEST_ADMIN_PASSWORD untuk NestJS CRUD test');
     }
 
-    const { createNestApp } = require('../dist/backend-nest/main');
+    const { createNestApp } = require('../dist/backend/main');
     const nestApp = await createNestApp();
     nestApp.useLogger([]);
     await nestApp.init();
@@ -284,7 +284,7 @@ if (integrationEnabled) {
     if (!username || !password || !process.env.CRON_SECRET) {
       throw new Error('TEST_ADMIN_USERNAME, TEST_ADMIN_PASSWORD, dan CRON_SECRET wajib diisi');
     }
-    const { createNestApp } = require('../dist/backend-nest/main');
+    const { createNestApp } = require('../dist/backend/main');
     const nestApp = await createNestApp();
     await nestApp.init();
     const agent = request.agent(nestApp.getHttpServer());
