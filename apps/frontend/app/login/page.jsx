@@ -12,6 +12,7 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [background, setBackground] = useState('');
+  const [backgroundInfo, setBackgroundInfo] = useState('');
   const [backgroundLoaded, setBackgroundLoaded] = useState(false);
 
   useEffect(() => {
@@ -20,6 +21,7 @@ export default function LoginPage() {
     setDarkMode(useDark);
     const url = `https://picsum.photos/seed/${Date.now()}/1200/800`;
     setBackground(url);
+    setBackgroundInfo(url.replace(/\/\d+\/\d+$/, ''));
     const image = new Image();
     image.onload = () => setBackgroundLoaded(true);
     image.onerror = () => setBackgroundLoaded(true);
@@ -56,5 +58,6 @@ export default function LoginPage() {
       {error && <div className="login-error">{error}</div>}
       <button className="login-submit" disabled={submitting}>{submitting ? 'Loading...' : 'Login'}</button>
     </form>
+    {backgroundInfo && <div className="bg-info-text">Image URL: {backgroundInfo}</div>}
   </main>;
 }
