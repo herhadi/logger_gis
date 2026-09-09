@@ -16,7 +16,7 @@ export class AuthController {
   async logout(@Req() req: Request, @Res() res: Response) {
     try {
       await this.authService.logout(req.session);
-      res.clearCookie('connect.sid', { path: '/' });
+      res.clearCookie('session_cookie', { path: '/' });
       return res.json({ message: 'Berhasil logout' });
     } catch {
       return res.status(500).json({ error: 'Gagal logout' });

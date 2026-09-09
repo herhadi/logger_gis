@@ -18,7 +18,20 @@ export async function createNestApp() {
     name: 'session_cookie',
     cookie: { httpOnly: true, maxAge: 24 * 60 * 60 * 1000, secure: process.env.NODE_ENV === 'production', sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax' }
   }));
-  app.enableCors({ credentials: true });
+  const allowedOrigins = (process.env.CORS_ORIGIN || '')
+    .split(',')
+    .map(origin => origin.trim())
+    .filter(Boolean);
+  app.enableCors({
+    credentials: true,
+    origin: (origin: string | undefined, callback: (error: Error | null, allowed?: boolean) => void) => {
+      if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Origin tidak diizinkan oleh CORS'));
+      }
+    }
+  });
   app.getHttpAdapter().get('/', (_req: unknown, res: { json: (body: unknown) => void }) => res.json({ service: 'gis-watermeter-backend', framework: 'nestjs', status: 'ok' }));
   return app;
 }
