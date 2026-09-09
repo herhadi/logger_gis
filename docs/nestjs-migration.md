@@ -32,6 +32,7 @@
 - [x] Tambahkan template environment khusus `apps/backend`.
 - [x] Pindahkan backend NestJS ke `apps/backend`.
 - [x] Pindahkan frontend Next.js ke `apps/frontend`.
+- [x] Jadikan backend NestJS API-only; frontend disajikan oleh Vercel.
 - [x] Alihkan Render ke runtime NestJS setelah smoke test deployment.
 
 Test Telegram live (mengirim pesan ke konfigurasi Telegram aktif):
