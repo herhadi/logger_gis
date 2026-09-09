@@ -28,6 +28,7 @@
 - [x] Tambahkan vector tile pipa dan polygon ke proof-of-concept MapLibre.
 - [x] Buat fondasi frontend Next.js terpisah untuk migrasi bertahap.
 - [x] Deklarasikan workspace monorepo untuk frontend Next.js.
+- [x] Pisahkan template environment backend dan frontend.
 - [ ] Pindahkan backend NestJS ke `apps/backend` setelah service Render baru tervalidasi.
 - [ ] Pindahkan frontend Next.js ke `apps/frontend` setelah deployment Vercel tervalidasi.
 - [x] Alihkan Render ke runtime NestJS setelah smoke test deployment.
