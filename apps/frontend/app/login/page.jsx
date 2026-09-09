@@ -19,8 +19,9 @@ export default function LoginPage() {
     const useDark = savedTheme ? savedTheme === 'dark' : window.matchMedia('(prefers-color-scheme: dark)').matches;
     setDarkMode(useDark);
     const url = `https://picsum.photos/seed/${Date.now()}/1200/800`;
+    setBackground(url);
     const image = new Image();
-    image.onload = () => { setBackground(url); setBackgroundLoaded(true); };
+    image.onload = () => setBackgroundLoaded(true);
     image.onerror = () => setBackgroundLoaded(true);
     image.src = url;
   }, []);
