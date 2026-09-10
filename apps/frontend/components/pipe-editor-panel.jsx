@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api';
 import { useToast } from './toast-provider';
 
 const initial = { dc_id: '', dia: '', jenis: '', panjang: '', keterangan: '', lokasi: '', status: '', diameter: '', roughness: '', zona: '' };
+const clean = value => value === null || value === undefined ? '' : String(value);
 
 export default function PipeEditorPanel() {
   const [feature, setFeature] = useState(null);
@@ -19,12 +20,12 @@ export default function PipeEditorPanel() {
     const onSelect = async event => {
       const selected = event.detail;
       setFeature(selected); setEditingId(String(selected.properties.id));
-      try { setForm({ ...initial, ...(await apiFetch(`/api/pipa/${selected.properties.id}`)) }); }
+      try { const detail = await apiFetch(`/api/pipa/${selected.properties.id}`); setForm(Object.fromEntries(Object.keys(initial).map(key => [key, clean(detail[key])] ))); }
       catch (error) { showToast(error.message || 'Gagal memuat detail pipa', 'error'); setFeature(null); }
     };
     window.addEventListener('gis:draw-created', onDraw);
     window.addEventListener('gis:pipa-selected', onSelect);
-    const onGeometry = event => { if (event.detail?.properties?.__editorType === 'pipa') setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
+    const onGeometry = event => { if (event.detail?.geometry?.type === 'LineString' && (!event.detail.properties?.__editorType || event.detail.properties.__editorType === 'pipa')) setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
     window.addEventListener('gis:geometry-updated', onGeometry);
     apiFetch('/api/pipa/option').then(setOptions).catch(error => console.error('Gagal memuat opsi pipa:', error));
     return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:pipa-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };

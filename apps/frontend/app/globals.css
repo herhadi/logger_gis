@@ -1,28 +1,527 @@
-* { box-sizing: border-box; }
-html, body { margin: 0; min-height: 100%; }
-body { background: #f8fafc; color: #0f172a; font-family: system-ui, sans-serif; }
-.page, .map-shell, .map { height: 100vh; width: 100%; }
-.map-shell { position: relative; }
-.map { min-height: 500px; }
-.map-status { position: absolute; z-index: 2; top: 12px; left: 58px; padding: 8px 10px; border-radius: 5px; background: rgba(255,255,255,.94); box-shadow: 0 1px 4px #0002; font-size: 13px; }
-.auth-loading { min-height: 100vh; display: grid; place-items: center; color: #475569; }
-.auth-header { position: fixed; z-index: 3; top: 12px; right: 12px; display: flex; gap: 10px; align-items: center; padding: 8px 10px; background: #fff; border-radius: 6px; box-shadow: 0 1px 4px #0003; font-size: 13px; }
-button { cursor: pointer; border: 0; border-radius: 5px; padding: 8px 12px; background: #2563eb; color: white; }
-.login-page { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; background: #6c757d; background-size: cover; background-position: center; background-repeat: no-repeat; position: relative; }
-.login-page::before { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,.3); }
-.login-box { position: relative; width: 100%; max-width: 400px; padding: 2rem; border-radius: 12px; background: rgba(255,255,255,.9); box-shadow: 0 0 20px rgba(0,0,0,.3); }
-.login-page.dark-mode .login-box { background: rgba(33,37,41,.95); color: white; }
-.login-heading, .password-label { display: flex; align-items: center; justify-content: space-between; }.login-heading { margin-bottom: 1rem; }.login-heading h4 { margin: 0; }
-.login-box label { display: block; margin-bottom: .5rem; }.login-box input { display: block; width: 100%; margin-bottom: 1rem; padding: .5rem .75rem; border: 1px solid #ced4da; border-radius: .375rem; font: inherit; }
-.login-box input:focus { outline: 0; box-shadow: 0 0 0 .2rem rgba(13,110,253,.25); }.login-page.dark-mode input { background: #343a40; color: white; border-color: #495057; }
-.theme-button, .password-toggle { border: 0; background: transparent; color: #0d6efd; padding: 0; }.theme-button { padding: 4px 8px; background: #6c757d; color: white; border-radius: 4px; }.password-toggle { font-size: .9rem; }
-.login-submit { width: 100%; background: #0d6efd; }.login-error { margin-top: .75rem; color: #dc3545; text-align: center; }.loading-overlay { position: fixed; right: 20px; bottom: 20px; z-index: 10; display: flex; width: 40px; height: 40px; align-items: center; justify-content: center; border-radius: 50%; background: rgba(0,0,0,.5); }.spinner { width: 30px; height: 30px; border: 3px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin 1s linear infinite; }
-.bg-info-text { position: fixed; left: 10px; bottom: 10px; z-index: 10; max-width: calc(100vw - 20px); padding: 6px 10px; border-radius: 8px; background: rgba(0,0,0,.4); color: #fff; font: .8rem sans-serif; word-break: break-all; }
-.pipe-legend { position: fixed; right: 10px; bottom: 10px; z-index: 4; min-width: 150px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,.95); box-shadow: 0 1px 4px #0003; font-size: 13px; }
-.pipe-legend h4 { margin: 0 0 8px; font-size: 15px; }.legend-item { display: flex; align-items: center; gap: 6px; margin: 4px 0; }.legend-line { display: inline-block; width: 24px; height: 6px; border-radius: 2px; }
-.layer-control { position: fixed; top: 62px; right: 12px; z-index: 4; display: grid; gap: 6px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,.95); box-shadow: 0 1px 4px #0003; font-size: 13px; }.layer-control strong { margin-bottom: 2px; }.layer-control label { display: flex; gap: 6px; align-items: center; }
-.admin-nav { position: fixed; top: 150px; left: 12px; z-index: 4; display: grid; gap: 5px; padding: 10px; border-radius: 6px; background: rgba(255,255,255,.95); box-shadow: 0 1px 4px #0003; font-size: 13px; }.admin-nav strong { margin-bottom: 3px; }.admin-nav button { padding: 5px 9px; text-align: left; background: #f1f5f9; color: #0f172a; }
-.editor-panel { position: fixed; top: 12px; right: 190px; z-index: 6; display: grid; gap: 8px; width: min(300px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; padding: 14px; border-radius: 8px; background: rgba(255,255,255,.97); box-shadow: 0 2px 10px #0004; font-size: 13px; }.editor-panel-title { display: flex; justify-content: space-between; align-items: center; font-size: 15px; }.editor-panel-title button { padding: 0 6px; background: transparent; color: #475569; font-size: 22px; }.editor-panel label { display: grid; gap: 3px; }.editor-panel input, .editor-panel select, .editor-panel textarea { width: 100%; padding: 6px; border: 1px solid #cbd5e1; border-radius: 4px; font: inherit; }.editor-panel textarea { min-height: 50px; resize: vertical; }.editor-save { width: 100%; }.editor-delete { width: 100%; background: #dc3545; }
-.mapboxgl-ctrl-top-left { z-index: 5; }.mapboxgl-ctrl-group { overflow: visible; border-radius: 6px; box-shadow: 0 1px 4px #0004; }.mapbox-gl-draw_ctrl-draw-btn { display: block !important; width: 29px !important; height: 29px !important; background-color: #fff !important; background-repeat: no-repeat !important; background-position: center !important; }
-.toast-container { position: fixed; left: 1rem; bottom: 1rem; z-index: 1200; display: grid; gap: .5rem; }.app-toast { min-width: 220px; display: flex; justify-content: space-between; gap: 12px; padding: .75rem 1rem; border-radius: 5px; color: #fff; box-shadow: 0 2px 8px #0003; font-size: 14px; }.app-toast button { padding: 0; background: transparent; font-size: 18px; }.app-toast-info { background: #0d6efd; }.app-toast-success { background: #198754; }.app-toast-error { background: #dc3545; }.app-toast-warning { background: #fd7e14; }
-@keyframes spin { to { transform: rotate(360deg); } }
+/* Global reset and base layout */
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: system-ui, sans-serif;
+}
+
+button {
+  cursor: pointer;
+  border: 0;
+  border-radius: 5px;
+  padding: 8px 12px;
+  background: #2563eb;
+  color: #fff;
+}
+
+.page,
+.map-shell,
+.map {
+  width: 100%;
+  height: 100vh;
+}
+
+.map-shell {
+  position: relative;
+}
+
+.map {
+  min-height: 500px;
+}
+
+.map-status {
+  position: absolute;
+  z-index: 2;
+  left: 12px;
+  bottom: 12px;
+  padding: 8px 10px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 4px #0002;
+  font-size: 13px;
+}
+
+.auth-loading {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  color: #475569;
+}
+
+/* Admin header and authentication */
+.admin-header {
+  position: fixed;
+  z-index: 8;
+  top: 0;
+  right: 0;
+  left: 0;
+  display: flex;
+  height: 48px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  border-bottom: 1px solid #dee2e6;
+  background: #f8f9fa;
+}
+
+.auth-header {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-size: 13px;
+}
+
+.admin-header button {
+  border: 1px solid #dc3545;
+  background: transparent;
+  color: #dc3545;
+}
+
+/* Login page */
+.login-page {
+  position: relative;
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: #6c757d;
+  background-position: center;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.login-page::before {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.3);
+  content: "";
+}
+
+.login-box {
+  position: relative;
+  width: 100%;
+  max-width: 400px;
+  padding: 2rem;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+}
+
+.login-page.dark-mode .login-box {
+  background: rgba(33, 37, 41, 0.95);
+  color: #fff;
+}
+
+.login-heading,
+.password-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.login-heading {
+  margin-bottom: 1rem;
+}
+
+.login-heading h4 {
+  margin: 0;
+}
+
+.login-box label {
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.login-box input {
+  display: block;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #ced4da;
+  border-radius: 0.375rem;
+  font: inherit;
+}
+
+.login-box input:focus {
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+
+.login-page.dark-mode input {
+  border-color: #495057;
+  background: #343a40;
+  color: #fff;
+}
+
+.theme-button,
+.password-toggle {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #0d6efd;
+}
+
+.theme-button {
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: #6c757d;
+  color: #fff;
+}
+
+.password-toggle {
+  font-size: 0.9rem;
+}
+
+.login-submit {
+  width: 100%;
+  background: #0d6efd;
+}
+
+.login-error {
+  margin-top: 0.75rem;
+  color: #dc3545;
+  text-align: center;
+}
+
+.loading-overlay {
+  position: fixed;
+  z-index: 10;
+  right: 20px;
+  bottom: 20px;
+  display: flex;
+  width: 40px;
+  height: 40px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.spinner {
+  width: 30px;
+  height: 30px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+.bg-info-text {
+  position: fixed;
+  z-index: 10;
+  bottom: 10px;
+  left: 10px;
+  max-width: calc(100vw - 20px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.4);
+  color: #fff;
+  font: 0.8rem sans-serif;
+  word-break: break-all;
+}
+
+/* Legend and collapsed layer control */
+.pipe-legend {
+  position: fixed;
+  z-index: 4;
+  right: 10px;
+  bottom: 10px;
+  width: max-content;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 4px #0003;
+  font-size: 13px;
+}
+
+.legend-toggle {
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  background: #fff;
+  color: #334155;
+  font-size: 18px;
+}
+
+.legend-options {
+  display: none;
+  gap: 6px;
+  padding: 6px;
+}
+
+.pipe-legend:hover,
+.pipe-legend:focus-within {
+  width: max-content;
+}
+
+.pipe-legend:hover .legend-options,
+.pipe-legend:focus-within .legend-options {
+  display: grid;
+}
+
+.pipe-legend h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.legend-item {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.legend-line {
+  display: inline-block;
+  width: 24px;
+  height: 6px;
+  border-radius: 2px;
+}
+
+.layer-control {
+  position: fixed;
+  z-index: 4;
+  top: 60px;
+  right: 12px;
+  width: 38px;
+  min-height: 38px;
+  padding: 4px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 1px 4px #0003;
+  font-size: 13px;
+}
+
+.layer-toggle {
+  width: 29px;
+  height: 29px;
+  padding: 0;
+  background: #fff;
+  color: #334155;
+  font-size: 18px;
+}
+
+.layer-options {
+  display: none;
+  gap: 6px;
+  padding: 6px;
+}
+
+.layer-control:hover,
+.layer-control:focus-within {
+  width: 190px;
+}
+
+.layer-control:hover .layer-options,
+.layer-control:focus-within .layer-options {
+  display: grid;
+}
+
+.layer-control strong {
+  margin-bottom: 2px;
+}
+
+.layer-control label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.layer-control hr {
+  width: 100%;
+  margin: 3px 0;
+  border: 0;
+  border-top: 1px solid #dee2e6;
+}
+
+/* Map editor controls; native Draw buttons are hidden because custom controls are active. */
+.draw-toolbar {
+  position: fixed;
+  z-index: 6;
+  top: 60px;
+  left: 58px;
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 1px 5px #0004;
+}
+
+.draw-toolbar button {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #cbd5e1;
+  border-radius: 3px;
+  background: #fff;
+  color: #334155;
+  font-size: 17px;
+  line-height: 1;
+}
+
+.draw-toolbar button:hover {
+  background: #e2e8f0;
+}
+
+.draw-toolbar .draw-trash {
+  background: #fff;
+  color: #dc3545;
+}
+
+.mapboxgl-ctrl-top-left {
+  z-index: 5;
+}
+
+.mapboxgl-ctrl-group {
+  overflow: visible;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px #0004;
+}
+
+.mapbox-gl-draw_ctrl-draw-btn {
+  display: block !important;
+  width: 30px !important;
+  height: 30px !important;
+  background-color: #fff !important;
+  background-position: center !important;
+  background-repeat: no-repeat !important;
+}
+
+.mapboxgl-ctrl-top-left .mapbox-gl-draw_ctrl-draw-btn {
+  display: none !important;
+}
+
+.maplibregl-ctrl-top-left {
+  top: 50px !important;
+  left: 4px !important;
+}
+
+.maplibregl-ctrl-top-left .maplibregl-ctrl {
+  margin-top: 0;
+}
+
+/* CRUD editor panel */
+.editor-panel {
+  position: fixed;
+  z-index: 6;
+  top: 12px;
+  right: 190px;
+  display: grid;
+  gap: 8px;
+  width: min(300px, calc(100vw - 24px));
+  max-height: calc(100vh - 24px);
+  overflow: auto;
+  padding: 14px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 2px 10px #0004;
+  font-size: 13px;
+}
+
+.editor-panel-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 15px;
+}
+
+.editor-panel-title button {
+  padding: 0 6px;
+  background: transparent;
+  color: #475569;
+  font-size: 22px;
+}
+
+.editor-panel label {
+  display: grid;
+  gap: 3px;
+}
+
+.editor-panel input,
+.editor-panel select,
+.editor-panel textarea {
+  width: 100%;
+  padding: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font: inherit;
+}
+
+.editor-panel textarea {
+  min-height: 50px;
+  resize: vertical;
+}
+
+.editor-save,
+.editor-delete {
+  width: 100%;
+}
+
+.editor-delete {
+  background: #dc3545;
+}
+
+/* Global toast notifications */
+.toast-container {
+  position: fixed;
+  z-index: 1200;
+  bottom: 1rem;
+  left: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.app-toast {
+  display: flex;
+  min-width: 220px;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  border-radius: 5px;
+  color: #fff;
+  box-shadow: 0 2px 8px #0003;
+  font-size: 14px;
+}
+
+.app-toast button {
+  padding: 0;
+  background: transparent;
+  font-size: 18px;
+}
+
+.app-toast-info {
+  background: #0d6efd;
+}
+
+.app-toast-success {
+  background: #198754;
+}
+
+.app-toast-error {
+  background: #dc3545;
+}
+
+.app-toast-warning {
+  background: #fd7e14;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

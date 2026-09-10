@@ -10,8 +10,9 @@ export default function AuthHeader({ user }) {
   const logout = async () => {
     try { await apiFetch('/api/logout', { method: 'POST' }); } finally { router.replace('/login'); }
   };
+  const lastLogin = user.last_login ? new Date(user.last_login).toLocaleString('id-ID') : '-';
   return <header className="auth-header">
-    <span>{user.username} · {user.role}</span>
+    <span>Login sebagai: 👤 {user.username} | Last login: {lastLogin}</span>
     <button type="button" onClick={logout}>Keluar</button>
   </header>;
 }

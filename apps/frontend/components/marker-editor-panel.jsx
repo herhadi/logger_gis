@@ -5,6 +5,7 @@ import { apiFetch } from '../lib/api';
 import { useToast } from './toast-provider';
 
 const initial = { tipe: 'acc', dc_id: '', keterangan: '', zona: '', lokasi: '', elevation: '' };
+const clean = value => value === null || value === undefined ? '' : String(value);
 
 export default function MarkerEditorPanel() {
   const [feature, setFeature] = useState(null);
@@ -16,11 +17,11 @@ export default function MarkerEditorPanel() {
     const onDraw = event => { if (event.detail?.geometry?.type === 'Point') { setFeature(event.detail); setEditingId(null); setForm(initial); } };
     const onSelect = async event => {
       const selected = event.detail; setFeature(selected); setEditingId(String(selected.properties.id));
-      try { setForm({ ...initial, tipe: selected.properties.tipe || 'acc', ...(await apiFetch(`/api/marker/${selected.properties.tipe}/${selected.properties.id}`)) }); }
+      try { const detail = await apiFetch(`/api/marker/${selected.properties.tipe}/${selected.properties.id}`); setForm(Object.fromEntries(Object.keys(initial).map(key => [key, clean(key === 'tipe' ? selected.properties.tipe : detail[key])] ))); }
       catch (error) { showToast(error.message || 'Gagal memuat detail marker', 'error'); setFeature(null); }
     };
     window.addEventListener('gis:draw-created', onDraw); window.addEventListener('gis:marker-selected', onSelect);
-    const onGeometry = event => { if (event.detail?.properties?.__editorType === 'marker') setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
+    const onGeometry = event => { if (event.detail?.geometry?.type === 'Point' && (!event.detail.properties?.__editorType || event.detail.properties.__editorType === 'marker')) setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
     window.addEventListener('gis:geometry-updated', onGeometry);
     return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:marker-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
   }, [showToast]);

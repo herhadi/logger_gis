@@ -7,5 +7,5 @@ import MarkerEditorPanel from '../../components/marker-editor-panel';
 import PolygonEditorPanel from '../../components/polygon-editor-panel';
 
 export default function AdminPage() {
-  return <AuthGate allowedRoles={['admin']}><main className="page"><AuthHeader /><nav className="admin-nav"><strong>CRUD</strong><button type="button">Pipa</button><button type="button">Marker</button><button type="button">Polygon</button></nav><MapView adminMode /><PipeLegend /><PipeEditorPanel /><MarkerEditorPanel /><PolygonEditorPanel /></main></AuthGate>;
+  return <AuthGate allowedRoles={['admin']}><main className="page"><header className="admin-header"><strong>Admin Editor Peta Logger</strong><AuthHeader /></header><MapView adminMode /><PipeLegend /><PipeEditorPanel /><MarkerEditorPanel /><PolygonEditorPanel /></main></AuthGate>;
 }
