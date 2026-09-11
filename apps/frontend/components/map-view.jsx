@@ -63,8 +63,8 @@ export default function MapView({ adminMode = false }) {
           ]
         : [id];
     layerIds.forEach((layerId) => {
-        if (map?.getLayer(layerId))
-          map.setLayoutProperty(layerId, "visibility", next ? "visible" : "none");
+      if (map?.getLayer(layerId))
+        map.setLayoutProperty(layerId, "visibility", next ? "visible" : "none");
     });
     if (id === "markers" && next) map?.fire("moveend");
   }
@@ -89,6 +89,10 @@ export default function MapView({ adminMode = false }) {
   function startDraw(mode) {
     if (!drawRef.current) {
       console.warn("[Next Draw] editor belum siap");
+      return;
+    }
+    if (mode === "trash") {
+      drawRef.current.trash();
       return;
     }
     drawRef.current.changeMode(mode);
@@ -434,41 +438,6 @@ export default function MapView({ adminMode = false }) {
         });
         drawRef.current = draw;
         map.addControl(draw, "top-left");
-        requestAnimationFrame(() => {
-          const drawButton = map
-            .getContainer()
-            .querySelector(".mapbox-gl-draw_ctrl-draw-btn");
-          const drawGroup = drawButton?.closest(".mapboxgl-ctrl-group");
-          if (drawGroup) drawGroup.style.display = "none";
-        });
-        requestAnimationFrame(() => {
-          const drawButtons = [
-            [".mapbox-gl-draw_point", "draw_point"],
-            [".mapbox-gl-draw_line", "draw_line_string"],
-            [".mapbox-gl-draw_polygon", "draw_polygon"],
-            [".mapbox-gl-draw_trash", "trash"],
-          ];
-          const container = map.getContainer();
-          const found = drawButtons.filter(([selector]) =>
-            container.querySelector(selector),
-          );
-          console.info("[Next Draw] native toolbar mounted", {
-            buttons: found.map(([, mode]) => mode),
-            total: found.length,
-          });
-          found.forEach(([selector, mode]) =>
-            container.querySelector(selector).addEventListener(
-              "click",
-              (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                draw.changeMode(mode);
-                console.info("[Next Draw] native toolbar mode", mode);
-              },
-              true,
-            ),
-          );
-        });
         map.on("draw.create", (event) => {
           console.info("[Next Draw] create", event.features);
           window.dispatchEvent(
@@ -724,7 +693,8 @@ export default function MapView({ adminMode = false }) {
             "markers",
             "markers-expanded",
           ].forEach((id) => {
-            if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+            if (map.getLayer(id))
+              map.setLayoutProperty(id, "visibility", "none");
           });
           return;
         }

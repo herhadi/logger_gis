@@ -347,7 +347,7 @@ button {
   border-top: 1px solid #dee2e6;
 }
 
-/* Map editor controls; native Draw buttons are hidden because custom controls are active. */
+/* Map editor controls. The custom bar supplements the native Draw toolbar. */
 .draw-toolbar {
   position: fixed;
   z-index: 6;
@@ -399,10 +399,6 @@ button {
   background-color: #fff !important;
   background-position: center !important;
   background-repeat: no-repeat !important;
-}
-
-.mapboxgl-ctrl-top-left .mapbox-gl-draw_ctrl-draw-btn {
-  display: none !important;
 }
 
 .maplibregl-ctrl-top-left {
