@@ -12,6 +12,8 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 
 ### Changed
 
+- Menambahkan cache tile in-memory berbatas (TTL 5 menit, maksimum 500 tile) agar request tile berulang tidak selalu membaca Neon.
+- Mengaktifkan `ValidationPipe` global NestJS dengan transform, whitelist, dan penolakan field tidak dikenal sebagai gerbang validasi request.
 - Mengalihkan runtime Render dari Express ke NestJS.
 - Menambahkan build dependency development pada proses build Render.
 - Menambahkan smoke test production untuk health, frontend, dan endpoint marker.
@@ -29,6 +31,9 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Memperpanjang cache HTTP tile marker, pipa, dan polygon menjadi 30 menit dengan stale-while-revalidate untuk mengurangi transfer Neon.
 - Menghapus cache-busting `refresh=Date.now()` pada refresh tile frontend agar tile dapat digunakan kembali dari cache.
 - Mendokumentasikan command build dan start backend NestJS dari `apps/backend`.
+- Memindahkan dependency dan lockfile backend ke `apps/backend` agar monorepo tidak bergantung pada package root legacy.
+- Memvalidasi dependency frontend mandiri di `apps/frontend`; production build berhasil dan audit menemukan 0 vulnerability.
+- Menetapkan `outputFileTracingRoot` frontend ke folder `apps/frontend` untuk menghindari deteksi lockfile legacy root.
 - Menambahkan dokumentasi refaktorisasi dan arsitektur di folder `docs/`.
 - Menetapkan aturan bahwa logic yang berpotensi dipakai lintas modul harus memiliki satu implementasi bersama.
 - Memusatkan whitelist tabel dan validasi koordinat marker di utility backend bersama.

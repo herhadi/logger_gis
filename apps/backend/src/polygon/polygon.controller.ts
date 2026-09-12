@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res, UseGuards 
 import { Response } from 'express';
 import { PolygonService } from './polygon.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { PolygonDto } from './polygon.dto';
 
 @Controller()
 export class PolygonController {
@@ -21,11 +22,11 @@ export class PolygonController {
 
   @Post('api/polygon/create')
   @UseGuards(SessionAuthGuard)
-  create(@Body() body: any) { return this.polygonService.create(body); }
+  create(@Body() body: PolygonDto) { return this.polygonService.create(body as unknown as Record<string, unknown>); }
 
   @Put('api/polygon/update/:id')
   @UseGuards(SessionAuthGuard)
-  update(@Param('id') id: string, @Body() body: any) { return this.polygonService.update(id, body); }
+  update(@Param('id') id: string, @Body() body: PolygonDto) { return this.polygonService.update(id, body as unknown as Record<string, unknown>); }
 
   @Delete('api/polygon/delete/:id')
   @UseGuards(SessionAuthGuard)

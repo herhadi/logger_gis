@@ -7,17 +7,17 @@ services:
     buildFilter:
       paths:
         - apps/backend/**
-        - package.json
-        - package-lock.json
+        - apps/backend/package.json
+        - apps/backend/package-lock.json
         - render.yaml
     healthCheckPath: /health
-    buildCommand: npm install --include=dev && npm run build:nest
-    startCommand: npm run start:nest
+    buildCommand: cd apps/backend && npm ci --include=dev && npm run build
+    startCommand: cd apps/backend && npm run start
     envVars:
       - key: NODE_ENV
         value: production
       - key: NODE_VERSION
-        value: 24
+        value: 24.21.0
       - key: DATABASE_URL
         sync: false
       - key: SESSION_SECRET

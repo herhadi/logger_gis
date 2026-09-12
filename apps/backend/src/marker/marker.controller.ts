@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res, UseGuards 
 import { Response } from 'express';
 import { MarkerService } from './marker.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { MarkerDto, MarkerUpdateDto } from './marker.dto';
 
 @Controller('api/marker')
 export class MarkerController {
@@ -28,14 +29,14 @@ export class MarkerController {
 
   @Post('create')
   @UseGuards(SessionAuthGuard)
-  create(@Body() body: Record<string, unknown>) {
-    return this.markerService.create(body);
+  create(@Body() body: MarkerDto) {
+    return this.markerService.create(body as unknown as Record<string, unknown>);
   }
 
   @Put('update/:tipe/:id')
   @UseGuards(SessionAuthGuard)
-  update(@Param('tipe') tipe: string, @Param('id') id: string, @Body() body: Record<string, unknown>) {
-    return this.markerService.update(tipe, id, body);
+  update(@Param('tipe') tipe: string, @Param('id') id: string, @Body() body: MarkerUpdateDto) {
+    return this.markerService.update(tipe, id, body as unknown as Record<string, unknown>);
   }
 
   @Delete('delete/:tipe/:id')

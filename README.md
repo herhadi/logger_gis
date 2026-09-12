@@ -18,7 +18,7 @@ Backend Node.js + PostgreSQL/PostGIS untuk data GIS watermeter, dengan frontend 
 
 ## Tech Stack
 
-- Node.js 20
+- Node.js `24.21.0`
 - Express 5
 - PostgreSQL + PostGIS
 - `pg` connection pool
@@ -52,7 +52,7 @@ Backend Node.js + PostgreSQL/PostGIS untuk data GIS watermeter, dengan frontend 
 
 ## Prasyarat
 
-- Node.js `>=20 <21`
+- Node.js `24.21.0`
 - Database PostgreSQL dengan ekstensi PostGIS
 - Tabel GIS dan tabel pendukung sudah tersedia di database
 - File `.env` lokal berisi konfigurasi yang diperlukan
@@ -84,6 +84,7 @@ Jangan commit file `.env`, token, private key, atau secret lain.
 ## Instalasi Lokal
 
 ```bash
+cd apps/backend
 npm install
 ```
 
@@ -96,6 +97,15 @@ PORT=4000 npm run start
 ```
 
 Tile GIS menggunakan cache HTTP selama 30 menit untuk mengurangi request dan transfer data berulang ke database. Setelah perubahan data melalui endpoint CRUD, refresh tile dilakukan melalui repaint MapLibre tanpa query cache-busting timestamp.
+
+Frontend dijalankan mandiri dari folder `apps/frontend`:
+
+```bash
+cd apps/frontend
+cp .env.example .env.local
+npm install
+npm run dev
+```
 
 Secara default server berjalan di port yang ditentukan environment `PORT`, atau `3000` jika tidak ada.
 

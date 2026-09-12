@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Param, Post, Put, Query, Res, UseGuards 
 import { Response } from 'express';
 import { PipaService } from './pipa.service';
 import { SessionAuthGuard } from '../auth/session-auth.guard';
+import { PipaDto } from './pipa.dto';
 
 @Controller('api/pipa')
 export class PipaController {
@@ -28,11 +29,11 @@ export class PipaController {
 
   @Post('create')
   @UseGuards(SessionAuthGuard)
-  create(@Body() body: Record<string, unknown>) { return this.pipaService.create(body); }
+  create(@Body() body: PipaDto) { return this.pipaService.create(body as unknown as Record<string, unknown>); }
 
   @Put('update/:id')
   @UseGuards(SessionAuthGuard)
-  update(@Param('id') id: string, @Body() body: Record<string, unknown>) { return this.pipaService.update(id, body); }
+  update(@Param('id') id: string, @Body() body: PipaDto) { return this.pipaService.update(id, body as unknown as Record<string, unknown>); }
 
   @Delete('delete/:id')
   @UseGuards(SessionAuthGuard)

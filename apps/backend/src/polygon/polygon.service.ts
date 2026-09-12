@@ -1,6 +1,7 @@
 import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { Pool } from 'pg';
 import { DATABASE_POOL } from '../database/database.module';
+import { getTile, setTile } from '../database/tile-cache';
 
 @Injectable()
 export class PolygonService {
@@ -26,9 +27,14 @@ export class PolygonService {
   async tile(zValue: string, xValue: string, yValue: string) {
     const z = Number(zValue); const x = Number(xValue); const y = Number(yValue);
     if (!Number.isInteger(z) || !Number.isInteger(x) || !Number.isInteger(y) || z < 0 || z > 22 || x < 0 || y < 0 || x >= 2 ** z || y >= 2 ** z) throw new HttpException({ error: 'Parameter tile tidak valid' }, HttpStatus.BAD_REQUEST);
+    const cacheKey = `polygon:${z}:${x}:${y}`;
+    const cached = getTile(cacheKey);
+    if (cached) return cached;
     const query = `WITH bounds AS (SELECT ST_TileEnvelope($1, $2, $3) AS tile) SELECT COALESCE(ST_AsMVT(tile_data, 'polygon', 4096, 'geom'), ''::bytea) AS tile FROM (SELECT ogr_fid AS id, nosamw, ST_AsMVTGeom(ST_Transform(shape, 3857), bounds.tile, 4096, 64, TRUE) AS geom FROM gis_srpolygon CROSS JOIN bounds WHERE shape && ST_Transform(bounds.tile, 4326) AND ST_Intersects(shape, ST_Transform(bounds.tile, 4326))) AS tile_data WHERE geom IS NOT NULL`;
     const { rows } = await this.db.query(query, [z, x, y]);
-    return rows[0]?.tile || Buffer.alloc(0);
+    const tile = rows[0]?.tile || Buffer.alloc(0);
+    setTile(cacheKey, tile);
+    return tile;
   }
 
   async selectionStats(body: any) {
