@@ -1,10 +1,16 @@
 import 'reflect-metadata';
-import 'dotenv/config';
+import path from 'node:path';
+import dotenv from 'dotenv';
 import { NestFactory } from '@nestjs/core';
 import session from 'express-session';
 import pgSessionFactory from 'connect-pg-simple';
 import { AppModule } from './app.module';
 import { databasePool } from './database/database.module';
+
+// Konfigurasi Nest dipisahkan dari project Express lama.
+// Pada hasil build, __dirname berada di dist/backend sehingga path ini
+// tetap menunjuk ke apps/backend/.env di root repository.
+dotenv.config({ path: path.resolve(__dirname, '../../apps/backend/.env') });
 
 export async function createNestApp() {
   const app = await NestFactory.create(AppModule, { logger: false });

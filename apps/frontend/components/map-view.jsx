@@ -31,6 +31,7 @@ export default function MapView({ adminMode = false }) {
     if (typeof window === "undefined") return "satellite";
     return localStorage.getItem("gis-basemap") || "satellite";
   });
+  const [activeDrawMode, setActiveDrawMode] = useState(null);
   const googleTiles = (layer) =>
     ["mt0", "mt1", "mt2", "mt3"].map(
       (server) =>
@@ -92,7 +93,32 @@ export default function MapView({ adminMode = false }) {
       return;
     }
     drawRef.current.changeMode(mode);
+    setDrawCursor(mode);
     console.info("[Next Draw] mode", mode);
+  }
+
+  function setDrawCursor(mode) {
+    const map = mapRef.current;
+    const canvas = map?.getCanvas();
+    if (!canvas) return;
+    const drawingMode = ["draw_point", "draw_line_string", "draw_polygon"].includes(
+      mode,
+    );
+    canvas.style.cursor = drawingMode ? "crosshair" : "";
+    setActiveDrawMode(drawingMode ? mode : null);
+
+    const buttonModes = {
+      ".mapbox-gl-draw_point": "draw_point",
+      ".mapbox-gl-draw_line": "draw_line_string",
+      ".mapbox-gl-draw_polygon": "draw_polygon",
+      ".mapbox-gl-draw_trash": "trash",
+    };
+    Object.entries(buttonModes).forEach(([selector, buttonMode]) => {
+      map
+        ?.getContainer()
+        ?.querySelector(selector)
+        ?.classList.toggle("draw-tool-active", buttonMode === mode);
+    });
   }
 
   useEffect(() => {
@@ -297,14 +323,17 @@ export default function MapView({ adminMode = false }) {
       );
       if (adminMode) {
         const draw = new MapboxDraw({
-          displayControlsDefault: true,
+          // Ikuti pola contoh resmi: hanya tampilkan tool yang memang dipakai.
+          displayControlsDefault: false,
           controls: {
             point: true,
             line_string: true,
             polygon: true,
             trash: true,
           },
-          defaultMode: "simple_select",
+          // Pola sample resmi: admin langsung siap menggambar polygon.
+          // Pengguna tetap dapat berpindah ke line/point dari toolbar.
+          defaultMode: "draw_polygon",
           styles: [
             {
               id: "gl-draw-polygon-fill-inactive",
@@ -434,41 +463,66 @@ export default function MapView({ adminMode = false }) {
         });
         drawRef.current = draw;
         map.addControl(draw, "top-left");
-        requestAnimationFrame(() => {
-          const drawButton = map
-            .getContainer()
-            .querySelector(".mapbox-gl-draw_ctrl-draw-btn");
-          const drawGroup = drawButton?.closest(".mapboxgl-ctrl-group");
-          if (drawGroup) drawGroup.style.display = "none";
+        map.on("draw.modechange", (event) => {
+          setDrawCursor(event.mode);
+          console.info("[Next Draw] mode berubah", event.mode);
         });
+        setDrawCursor("draw_polygon");
         requestAnimationFrame(() => {
-          const drawButtons = [
+          const nativeButtons = [
             [".mapbox-gl-draw_point", "draw_point"],
             [".mapbox-gl-draw_line", "draw_line_string"],
             [".mapbox-gl-draw_polygon", "draw_polygon"],
-            [".mapbox-gl-draw_trash", "trash"],
           ];
           const container = map.getContainer();
-          const found = drawButtons.filter(([selector]) =>
-            container.querySelector(selector),
-          );
-          console.info("[Next Draw] native toolbar mounted", {
-            buttons: found.map(([, mode]) => mode),
-            total: found.length,
+          nativeButtons.forEach(([selector, mode]) => {
+            const button = container.querySelector(selector);
+            if (!button) return;
+            const activate = (event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              draw.changeMode(mode);
+              setDrawCursor(mode);
+              console.info("[Next Draw] native mode", mode);
+            };
+            button.addEventListener("pointerdown", activate, true);
+            button.addEventListener("click", activate, true);
+            button.onclick = activate;
           });
-          found.forEach(([selector, mode]) =>
-            container.querySelector(selector).addEventListener(
-              "click",
-              (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                draw.changeMode(mode);
-                console.info("[Next Draw] native toolbar mode", mode);
-              },
-              true,
-            ),
-          );
+          console.info("[Next Draw] native toolbar", {
+            buttons: nativeButtons.filter(([selector]) =>
+              container.querySelector(selector),
+            ).length,
+          });
         });
+        const handleNativeDrawPointer = (event) => {
+          const button = event.target?.closest?.("button");
+          if (!button || !map.getContainer().contains(button)) return;
+          const identity = `${button.className || ""} ${button.title || ""}`.toLowerCase();
+          const mode = identity.includes("polygon")
+            ? "draw_polygon"
+            : identity.includes("line")
+              ? "draw_line_string"
+              : identity.includes("point")
+                ? "draw_point"
+                : null;
+          if (!mode) return;
+          event.preventDefault();
+          event.stopPropagation();
+          draw.changeMode(mode);
+          setDrawCursor(mode);
+          console.info("[Next Draw] native delegated mode", mode);
+        };
+        map.getContainer().addEventListener(
+          "pointerdown",
+          handleNativeDrawPointer,
+          true,
+        );
+        map.once("remove", () =>
+          map
+            .getContainer()
+            .removeEventListener("pointerdown", handleNativeDrawPointer, true),
+        );
         map.on("draw.create", (event) => {
           console.info("[Next Draw] create", event.features);
           window.dispatchEvent(
@@ -875,6 +929,7 @@ export default function MapView({ adminMode = false }) {
         <>
           <div className="draw-toolbar" aria-label="Editor geometri">
             <button
+              className={activeDrawMode === "draw_line_string" ? "draw-tool-active" : ""}
               title="Pipa baru"
               aria-label="Pipa baru"
               type="button"
@@ -883,6 +938,7 @@ export default function MapView({ adminMode = false }) {
               ╱
             </button>
             <button
+              className={activeDrawMode === "draw_point" ? "draw-tool-active" : ""}
               title="Marker baru"
               aria-label="Marker baru"
               type="button"
@@ -891,6 +947,7 @@ export default function MapView({ adminMode = false }) {
               ●
             </button>
             <button
+              className={activeDrawMode === "draw_polygon" ? "draw-tool-active" : ""}
               title="Polygon baru"
               aria-label="Polygon baru"
               type="button"
