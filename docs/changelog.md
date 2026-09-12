@@ -16,6 +16,8 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 - Mengaktifkan `ValidationPipe` global NestJS dengan transform, whitelist, dan penolakan field tidak dikenal sebagai gerbang validasi request.
 - Memindahkan smoke/integration test NestJS ke `apps/backend/test` dan menambahkan verifikasi health, validasi payload, serta response vector tile.
 - Menambahkan script `npm test` backend sebagai runner smoke test lokal tanpa database.
+- Menambahkan `LoginDto` dan unit test validasi login/session guard tanpa database.
+- Menambahkan integration test login, session, dan logout yang hanya aktif dengan database flag.
 - Memisahkan test database/tile dengan flag `RUN_NEST_DB_INTEGRATION` agar limit Neon tidak menggagalkan smoke test NestJS.
 - Mengalihkan runtime Render dari Express ke NestJS.
 - Menambahkan build dependency development pada proses build Render.

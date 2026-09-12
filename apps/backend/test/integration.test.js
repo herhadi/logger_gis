@@ -32,6 +32,22 @@ if (enabled) {
     assert.match(String(response.headers['content-type']), /application\/vnd\.mapbox-vector-tile/);
   });
 
+  test('login, session, dan logout berjalan dengan database staging', { skip: !databaseEnabled }, async () => {
+    const username = process.env.TEST_ADMIN_USERNAME;
+    const password = process.env.TEST_ADMIN_PASSWORD;
+    assert.ok(username && password, 'TEST_ADMIN_USERNAME dan TEST_ADMIN_PASSWORD wajib diisi');
+    const agent = request.agent(app.getHttpServer());
+    const login = await agent.post('/api/login').send({ username, password });
+    assert.equal(login.statusCode, 200);
+    const session = await agent.get('/api/session');
+    assert.equal(session.statusCode, 200);
+    assert.equal(session.body.user.username, username);
+    const logout = await agent.post('/api/logout');
+    assert.equal(logout.statusCode, 200);
+    const afterLogout = await agent.get('/api/session');
+    assert.equal(afterLogout.statusCode, 401);
+  });
+
   test.after(async () => {
     if (app) await app.close();
   });
