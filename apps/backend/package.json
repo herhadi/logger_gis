@@ -37,6 +37,8 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "start": "node dist/main.js",
-    "start:dev": "npm run build && npm run start"
+    "start:dev": "npm run build && npm run start",
+    "test": "node --test test/*.test.js",
+    "test:integration": "npm run build && node --test test/*.test.js"
   }
 }

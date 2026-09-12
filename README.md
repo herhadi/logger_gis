@@ -107,6 +107,15 @@ npm install
 npm run dev
 ```
 
+Test backend NestJS dijalankan dari `apps/backend`:
+
+```bash
+npm test
+npm run test:integration
+```
+
+`npm test` hanya menjalankan smoke test aman tanpa database. Gunakan `RUN_NEST_INTEGRATION=1 npm run test:integration` untuk smoke test NestJS. Test yang membaca database/tile hanya aktif dengan `RUN_NEST_DB_INTEGRATION=1` dan harus memakai `DATABASE_URL` staging yang tersedia.
+
 Secara default server berjalan di port yang ditentukan environment `PORT`, atau `3000` jika tidak ada.
 
 Buka aplikasi:
