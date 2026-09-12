@@ -26,6 +26,9 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 
 ### Changed
 
+- Memperpanjang cache HTTP tile marker, pipa, dan polygon menjadi 30 menit dengan stale-while-revalidate untuk mengurangi transfer Neon.
+- Menghapus cache-busting `refresh=Date.now()` pada refresh tile frontend agar tile dapat digunakan kembali dari cache.
+- Mendokumentasikan command build dan start backend NestJS dari `apps/backend`.
 - Menambahkan dokumentasi refaktorisasi dan arsitektur di folder `docs/`.
 - Menetapkan aturan bahwa logic yang berpotensi dipakai lintas modul harus memiliki satu implementasi bersama.
 - Memusatkan whitelist tabel dan validasi koordinat marker di utility backend bersama.

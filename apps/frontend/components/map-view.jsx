@@ -667,7 +667,7 @@ export default function MapView({ adminMode = false }) {
             const source = map.getSource(sourceId);
             if (source?.setTiles)
               source.setTiles([
-                `${API_URL}/api/${sourceId === "markers" ? "marker" : sourceId}/tiles/{z}/{x}/{y}.pbf?refresh=${Date.now()}`,
+                `${API_URL}/api/${sourceId === "markers" ? "marker" : sourceId}/tiles/{z}/{x}/{y}.pbf`,
               ]);
           });
           map.triggerRepaint();

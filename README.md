@@ -87,11 +87,15 @@ Jangan commit file `.env`, token, private key, atau secret lain.
 npm install
 ```
 
-Jalankan server:
+Build dan jalankan backend NestJS dari folder backend:
 
 ```bash
-npm start
+cd apps/backend
+npm run build
+PORT=4000 npm run start
 ```
+
+Tile GIS menggunakan cache HTTP selama 30 menit untuk mengurangi request dan transfer data berulang ke database. Setelah perubahan data melalui endpoint CRUD, refresh tile dilakukan melalui repaint MapLibre tanpa query cache-busting timestamp.
 
 Secara default server berjalan di port yang ditentukan environment `PORT`, atau `3000` jika tidak ada.
 

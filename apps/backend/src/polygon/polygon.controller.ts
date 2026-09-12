@@ -10,7 +10,7 @@ export class PolygonController {
   @Get('api/polygon/tiles/:z/:x/:y.pbf')
   async tile(@Param('z') z: string, @Param('x') x: string, @Param('y') y: string, @Res() response: Response) {
     response.setHeader('Content-Type', 'application/vnd.mapbox-vector-tile');
-    response.setHeader('Cache-Control', 'public, max-age=60');
+    response.setHeader('Cache-Control', 'public, max-age=1800, stale-while-revalidate=86400');
     return response.send(await this.polygonService.tile(z, x, y));
   }
   @Post('api/selection/stats') selectionStats(@Body() body: any) { return this.polygonService.selectionStats(body); }

@@ -1,0 +1,9 @@
+{
+  "name": "gis-watermeter-backend",
+  "private": true,
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node ../../dist/backend/main.js",
+    "start:dev": "npm run build && npm run start"
+  }
+}
