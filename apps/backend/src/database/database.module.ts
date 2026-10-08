@@ -1,5 +1,10 @@
 import { Global, Module } from '@nestjs/common';
+import path from 'node:path';
+import dotenv from 'dotenv';
 import { Pool } from 'pg';
+
+// Pool dibuat saat module di-import, jadi env Nest harus dimuat lebih dulu.
+dotenv.config({ path: path.resolve(__dirname, '../../apps/backend/.env') });
 
 export const DATABASE_POOL = 'DATABASE_POOL';
 
