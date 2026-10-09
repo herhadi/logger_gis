@@ -32,6 +32,13 @@ export default function MapView({ adminMode = false }) {
     return localStorage.getItem("gis-basemap") || "satellite";
   });
   const [activeDrawMode, setActiveDrawMode] = useState(null);
+  const [areaAnalysisMode, setAreaAnalysisMode] = useState(false);
+  const [areaPoints, setAreaPoints] = useState([]);
+  const [areaStats, setAreaStats] = useState(null);
+  const [areaStatsLoading, setAreaStatsLoading] = useState(false);
+  const areaAnalysisModeRef = useRef(false);
+  const areaPointsRef = useRef([]);
+  const visibilityRef = useRef(visibility);
   const [geoQuery, setGeoQuery] = useState("");
   const [geoResults, setGeoResults] = useState([]);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -46,6 +53,72 @@ export default function MapView({ adminMode = false }) {
   const snappingRef = useRef(false);
   const expandedClusterRef = useRef(false);
   const { showToast } = useToast();
+
+  useEffect(() => { visibilityRef.current = visibility; }, [visibility]);
+  useEffect(() => { areaAnalysisModeRef.current = areaAnalysisMode; }, [areaAnalysisMode]);
+
+  function updateAreaPreview(points) {
+    const source = mapRef.current?.getSource("area-analysis");
+    if (!source) return;
+    const features = points.map((coordinate, index) => ({ type: "Feature", properties: { role: "vertex", index }, geometry: { type: "Point", coordinates: coordinate } }));
+    if (points.length >= 2) features.push({ type: "Feature", properties: { role: "outline" }, geometry: { type: "LineString", coordinates: points } });
+    if (points.length >= 3) features.push({ type: "Feature", properties: { role: "fill" }, geometry: { type: "Polygon", coordinates: [[...points, points[0]]] } });
+    source.setData({ type: "FeatureCollection", features });
+  }
+
+  function startAreaAnalysis() {
+    const map = mapRef.current;
+    if (!adminMode || !map) return;
+    if (areaAnalysisModeRef.current) {
+      areaAnalysisModeRef.current = false;
+      setAreaAnalysisMode(false);
+      map.doubleClickZoom.enable();
+      map.getCanvas().style.cursor = "";
+      showToast("Analisis area dibatalkan.", "info");
+      return;
+    }
+    drawRef.current?.changeMode("simple_select");
+    setActiveDrawMode(null);
+    setAreaPoints([]);
+    setAreaStats(null);
+    updateAreaPreview([]);
+    areaPointsRef.current = [];
+    areaAnalysisModeRef.current = true;
+    setAreaAnalysisMode(true);
+    map.doubleClickZoom.disable();
+    map.getCanvas().style.cursor = "crosshair";
+    showToast("Klik peta untuk menentukan titik area, minimal 3 titik.", "info");
+  }
+
+  async function finishAreaAnalysis() {
+    const points = areaPointsRef.current;
+    if (points.length < 3) { showToast("Area harus memiliki minimal 3 titik.", "error"); return; }
+    const ring = [...points, points[0]];
+    const geometry = { type: "Polygon", coordinates: [ring] };
+    areaAnalysisModeRef.current = false;
+    setAreaAnalysisMode(false);
+    mapRef.current?.doubleClickZoom.enable();
+    if (mapRef.current?.getCanvas()) mapRef.current.getCanvas().style.cursor = "";
+    setAreaStatsLoading(true);
+    try {
+      const stats = await apiFetch("/api/selection/stats", { method: "POST", body: JSON.stringify({ geometry, includePoints: visibilityRef.current.markers, includeLines: visibilityRef.current.pipa, includePolygons: true }) });
+      const radians = points.map(([lng, lat]) => ({ lat: lat * Math.PI / 180, lng: lng * Math.PI / 180 }));
+      let sum = 0;
+      for (let i = 0; i < radians.length; i++) { const a = radians[i]; const b = radians[(i + 1) % radians.length]; sum += a.lng * b.lat - b.lng * a.lat; }
+      const areaHa = Math.abs(sum) * 6371000 * 6371000 / 2 / 10000;
+      setAreaStats({ ...stats, areaHa: areaHa.toFixed(2) });
+      showToast("Statistik area berhasil dihitung.", "success");
+    } catch (error) {
+      showToast(error.message || "Gagal menghitung statistik area.", "error");
+    } finally { setAreaStatsLoading(false); }
+  }
+
+  function clearAreaAnalysis() {
+    areaPointsRef.current = [];
+    setAreaPoints([]);
+    setAreaStats(null);
+    updateAreaPreview([]);
+  }
 
   function popupPositionAt(point) {
     const rect = mapRef.current?.getContainer().getBoundingClientRect();
@@ -150,6 +223,14 @@ export default function MapView({ adminMode = false }) {
     if (!drawRef.current) {
       console.warn("[Next Draw] editor belum siap");
       return;
+    }
+    if (areaAnalysisModeRef.current) {
+      areaAnalysisModeRef.current = false;
+      setAreaAnalysisMode(false);
+      mapRef.current?.doubleClickZoom.enable();
+      updateAreaPreview([]);
+      areaPointsRef.current = [];
+      setAreaPoints([]);
     }
     if (mode === "trash") {
       drawRef.current.trash();
@@ -621,6 +702,7 @@ export default function MapView({ adminMode = false }) {
           console.info("[Next Draw] delete", event.features),
         );
         map.on("click", "pipa", (event) => {
+          if (areaAnalysisModeRef.current) return;
           const feature = event.features?.[0];
           if (!feature?.properties?.id || !feature.geometry) return;
           const drawFeature = {
@@ -655,6 +737,7 @@ export default function MapView({ adminMode = false }) {
           map.getCanvas().style.cursor = "";
         });
         map.on("click", "markers", (event) => {
+          if (areaAnalysisModeRef.current) return;
           const feature = event.features?.[0];
           if (!feature?.properties?.id || !feature.geometry) return;
           const drawFeature = {
@@ -689,6 +772,7 @@ export default function MapView({ adminMode = false }) {
           map.getCanvas().style.cursor = "";
         });
         map.on("click", "polygon", (event) => {
+          if (areaAnalysisModeRef.current) return;
           const feature = event.features?.[0];
           if (!feature?.properties?.id || !feature.geometry) return;
           const drawFeature = {
@@ -759,6 +843,19 @@ export default function MapView({ adminMode = false }) {
       };
       window.addEventListener("gis:filter-diameter", onDiameterFilter);
       map.once("remove", () => window.removeEventListener("gis:filter-diameter", onDiameterFilter));
+      map.on("load", () => {
+        map.addSource("area-analysis", { type: "geojson", data: { type: "FeatureCollection", features: [] } });
+        map.addLayer({ id: "area-analysis-fill", type: "fill", source: "area-analysis", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#0ea5e9", "fill-opacity": 0.18 } });
+        map.addLayer({ id: "area-analysis-outline", type: "line", source: "area-analysis", filter: ["==", ["geometry-type"], "LineString"], paint: { "line-color": "#0284c7", "line-width": 3, "line-dasharray": [2, 1] } });
+        map.addLayer({ id: "area-analysis-points", type: "circle", source: "area-analysis", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#0284c7", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+      });
+      map.on("click", (event) => {
+        if (!areaAnalysisModeRef.current) return;
+        const points = [...areaPointsRef.current, [event.lngLat.lng, event.lngLat.lat]];
+        areaPointsRef.current = points;
+        setAreaPoints(points);
+        updateAreaPreview(points);
+      });
       map.on("load", () => setStatus("MapLibre aktif"));
       map.on("load", () => {
         ["osm", "satellite", "googleHybrid", "googleSatellite"].forEach(
@@ -845,6 +942,7 @@ export default function MapView({ adminMode = false }) {
       map.on("load", loadMarkerClusters);
       map.on("moveend", loadMarkerClusters);
       map.on("click", "marker-clusters", (event) => {
+        if (areaAnalysisModeRef.current) return;
         const cluster = event.features?.[0];
         const source = map.getSource("markerClusters");
         if (!cluster || !source?.getClusterExpansionZoom) return;
@@ -959,6 +1057,7 @@ export default function MapView({ adminMode = false }) {
       {adminMode && (
         <>
           <div className="draw-toolbar" aria-label="Editor geometri">
+            <button className={areaAnalysisMode ? "draw-tool-active" : ""} title="Analisis area" aria-label="Analisis area" type="button" onClick={startAreaAnalysis}>⌗</button>
             <button
               className={activeDrawMode === "draw_line_string" ? "draw-tool-active" : ""}
               title="Pipa baru"
@@ -1004,6 +1103,24 @@ export default function MapView({ adminMode = false }) {
               ⌫
             </button>
           </div>
+          {areaAnalysisMode && (
+            <div className="area-analysis-actions">
+              <span>Titik area: {areaPoints.length} (minimal 3)</span>
+              <button type="button" onClick={clearAreaAnalysis}>Ulangi</button>
+              <button type="button" disabled={areaPoints.length < 3 || areaStatsLoading} onClick={finishAreaAnalysis}>{areaStatsLoading ? "Menghitung..." : "Hitung"}</button>
+              <button type="button" onClick={startAreaAnalysis}>Batal</button>
+            </div>
+          )}
+          {areaStats && (
+            <div className="area-analysis-results" role="status">
+              <strong>Hasil Analisis Area</strong>
+              <span>Luas: {areaStats.areaHa} ha</span>
+              <span>Point: {areaStats.pointCount ?? 0}</span>
+              <span>Line: {areaStats.lineCount ?? 0}</span>
+              <span>Polygon: {areaStats.polygonCount ?? 0}</span>
+              <button type="button" onClick={() => { clearAreaAnalysis(); }}>Tutup</button>
+            </div>
+          )}
           <div className="layer-control">
             <button
               className="layer-toggle"
