@@ -575,3 +575,5 @@ button {
     transform: rotate(360deg);
   }
 }
+
+.geo-search{position:absolute;z-index:7;top:12px;left:48px;width:min(340px,calc(100vw - 110px));display:flex;flex-wrap:wrap;gap:5px;padding:6px;border:1px solid #cbd5e1;border-radius:8px;background:#fff;box-shadow:0 2px 8px #0002}.geo-search input{min-width:0;flex:1;border:1px solid #cbd5e1;border-radius:5px;padding:7px 8px}.geo-search>button{border:0;border-radius:5px;padding:6px 10px;background:#2563eb;color:white}.geo-results{display:grid;flex-basis:100%;max-height:250px;overflow-y:auto}.geo-results button{text-align:left;padding:8px;border:0;border-bottom:1px solid #e2e8f0;background:white;color:#1e293b}.geo-results button:hover{background:#eff6ff}.legend-filter{display:flex;align-items:center;gap:8px;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}.legend-item:has(.legend-filter){padding:2px 4px;border-radius:4px}.legend-item:has(.legend-filter):hover{background:#e2e8f0}
