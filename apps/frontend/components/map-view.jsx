@@ -249,7 +249,11 @@ export default function MapView({ adminMode = false }) {
                   100,
                   27,
                 ],
+                // Menyamai marker cluster Leaflet lama: warna transparan
+                // sehingga pipa dan citra satelit tetap terlihat di bawahnya.
+                "circle-opacity": 0.68,
                 "circle-stroke-color": "#fff",
+                "circle-stroke-opacity": 0.7,
                 "circle-stroke-width": 1,
               },
             },

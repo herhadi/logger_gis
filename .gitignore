@@ -1,6 +1,7 @@
 # Folder dependencies (sangat berat, jangan diupload)
 node_modules/
 dist/
+*.tsbuildinfo
 
 # File konfigurasi rahasia (nanti untuk database)
 .env
