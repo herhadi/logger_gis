@@ -462,13 +462,14 @@ button {
 /* CRUD editor panel */
 .editor-panel {
   position: fixed;
-  z-index: 6;
-  top: 12px;
-  right: 190px;
+  z-index: 9;
+  top: 60px;
+  left: 80px;
+  right: auto;
   display: grid;
   gap: 8px;
   width: min(300px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
+  max-height: calc(100vh - 72px);
   overflow: auto;
   padding: 14px;
   border-radius: 8px;
