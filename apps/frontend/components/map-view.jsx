@@ -32,6 +32,9 @@ export default function MapView({ adminMode = false }) {
     return localStorage.getItem("gis-basemap") || "satellite";
   });
   const [activeDrawMode, setActiveDrawMode] = useState(null);
+  const [geoQuery, setGeoQuery] = useState("");
+  const [geoResults, setGeoResults] = useState([]);
+  const [geoLoading, setGeoLoading] = useState(false);
   const googleTiles = (layer) =>
     ["mt0", "mt1", "mt2", "mt3"].map(
       (server) =>
@@ -61,6 +64,35 @@ export default function MapView({ adminMode = false }) {
     }
     if (!coordinate || !mapRef.current) return { left: 80, top: 64 };
     return popupPositionAt(mapRef.current.project(coordinate));
+  }
+
+  async function searchLocation(event) {
+    event.preventDefault();
+    const query = geoQuery.trim();
+    const key = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY;
+    if (!query) return;
+    if (!key) { showToast("Atur NEXT_PUBLIC_GEOAPIFY_API_KEY untuk pencarian lokasi.", "error"); return; }
+    setGeoLoading(true);
+    try {
+      const formatted = query.length <= 10 && !/[ ,0-9]/.test(query) ? query + " Batang" : query;
+      const url = new URL("https://api.geoapify.com/v1/geocode/search");
+      url.search = new URLSearchParams({ text: formatted, limit: "10", filter: "countrycode:id", bias: "proximity:109.7280,-6.8974", apiKey: key }).toString();
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Pencarian lokasi gagal");
+      const data = await response.json();
+      const priority = { village: 5, suburb: 4, city_district: 4, town: 3, city: 2, state: 1 };
+      const results = (data.features || []).map(feature => ({ name: feature.properties.formatted || feature.properties.name, center: feature.geometry.coordinates, bbox: feature.bbox, properties: feature.properties })).sort((a,b) => (priority[b.properties.result_type] || 0) - (priority[a.properties.result_type] || 0) || (b.properties.rank?.confidence || 0) - (a.properties.rank?.confidence || 0));
+      setGeoResults(results);
+      if (!results.length) showToast("Lokasi tidak ditemukan.", "info");
+    } catch (error) { showToast(error.message || "Gagal mencari lokasi", "error"); setGeoResults([]); }
+    finally { setGeoLoading(false); }
+  }
+  function chooseGeoResult(result) {
+    const map = mapRef.current;
+    if (!map) return;
+    if (result.bbox && result.bbox.length === 4) map.fitBounds([[result.bbox[0], result.bbox[1]], [result.bbox[2], result.bbox[3]]], { padding: { top: 70, bottom: 40, left: 40, right: 40 } });
+    else map.flyTo({ center: result.center, zoom: 15 });
+    setGeoResults([]); setGeoQuery(result.name || geoQuery);
   }
 
   function toggleLayer(id) {
@@ -912,6 +944,7 @@ export default function MapView({ adminMode = false }) {
   return (
     <section className="map-shell">
       <div ref={containerRef} className="map" />
+      <form className="geo-search" onSubmit={searchLocation}><input aria-label="Cari desa atau kecamatan" placeholder="Cari desa/kecamatan..." value={geoQuery} onChange={event => setGeoQuery(event.target.value)} /><button type="submit" disabled={geoLoading}>{geoLoading ? "…" : "Cari"}</button>{geoResults.length > 0 && <div className="geo-results">{geoResults.map((result,index) => <button type="button" key={result.name + "-" + index} onClick={() => chooseGeoResult(result)}>{result.name}</button>)}</div>}</form>
       <div className="map-status">{status}</div>
       {adminMode && (
         <>
