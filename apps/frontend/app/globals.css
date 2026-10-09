@@ -431,32 +431,36 @@ button {
 .maplibregl-ctrl-top-left {
   top: 50px !important;
   left: 4px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .maplibregl-ctrl-top-left .maplibregl-ctrl {
-  margin-top: 0;
+  margin: 0 !important;
 }
 
-/* Keep navigation and drawing controls aligned, with a clear gap between them. */
-.maplibregl-ctrl-top-left .maplibregl-ctrl-group {
+/* MapLibre navigation and Mapbox Draw controls use different class names. */
+.maplibregl-ctrl-top-left .maplibregl-ctrl-group,
+.maplibregl-ctrl-top-left .mapboxgl-ctrl-group {
   width: 30px;
-  margin-right: 0;
-  margin-left: 0;
+  margin: 0 !important;
   border-radius: 6px;
+  box-sizing: border-box;
 }
 
-.maplibregl-ctrl-top-left .maplibregl-ctrl-group + .maplibregl-ctrl-group {
-  margin-top: 12px;
-}
-
-.maplibregl-ctrl-top-left .maplibregl-ctrl-group button {
-  width: 30px;
-  height: 30px;
-}
-
-.maplibregl-ctrl-top-left .maplibregl-ctrl-group .mapbox-gl-draw_ctrl-draw-btn {
+.maplibregl-ctrl-top-left .maplibregl-ctrl-group button,
+.maplibregl-ctrl-top-left .mapboxgl-ctrl-group button,
+.maplibregl-ctrl-top-left .mapboxgl-ctrl-group .mapbox-gl-draw_ctrl-draw-btn {
   width: 30px !important;
   height: 30px !important;
+  box-sizing: border-box;
+}
+
+/* Ensure each toolbar stays below the page header. */
+.maplibregl-ctrl-top-left {
+  z-index: 5;
 }
 
 /* CRUD editor panel */
