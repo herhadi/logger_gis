@@ -25,12 +25,26 @@ export default function PipeEditorPanel() {
       try { const detail = await apiFetch(`/api/pipa/${selected.properties.id}`); setForm(Object.fromEntries(Object.keys(initial).map(key => [key, clean(detail[key])] ))); }
       catch (error) { showToast(error.message || 'Gagal memuat detail pipa', 'error'); setFeature(null); }
     };
+    const closeOnOtherSelection = () => setFeature(null);
+    const closeOnOtherDraw = event => {
+      if (event.detail?.geometry?.type && event.detail.geometry.type !== 'LineString') setFeature(null);
+    };
     window.addEventListener('gis:draw-created', onDraw);
+    window.addEventListener('gis:marker-selected', closeOnOtherSelection);
+    window.addEventListener('gis:polygon-selected', closeOnOtherSelection);
+    window.addEventListener('gis:draw-created', closeOnOtherDraw);
     window.addEventListener('gis:pipa-selected', onSelect);
     const onGeometry = event => { if (event.detail?.geometry?.type === 'LineString' && (!event.detail.properties?.__editorType || event.detail.properties.__editorType === 'pipa')) setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
     window.addEventListener('gis:geometry-updated', onGeometry);
     apiFetch('/api/pipa/option').then(setOptions).catch(error => console.error('Gagal memuat opsi pipa:', error));
-    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:pipa-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
+    return () => {
+      window.removeEventListener('gis:draw-created', onDraw);
+      window.removeEventListener('gis:draw-created', closeOnOtherDraw);
+      window.removeEventListener('gis:marker-selected', closeOnOtherSelection);
+      window.removeEventListener('gis:polygon-selected', closeOnOtherSelection);
+      window.removeEventListener('gis:pipa-selected', onSelect);
+      window.removeEventListener('gis:geometry-updated', onGeometry);
+    };
   }, [showToast]);
 
   useEffect(() => {
