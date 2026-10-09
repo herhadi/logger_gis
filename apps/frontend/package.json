@@ -2,7 +2,7 @@
   "name": "gis-watermeter-frontend",
   "private": true,
   "engines": {
-    "node": "24.21.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "next dev",
