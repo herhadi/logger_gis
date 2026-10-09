@@ -21,17 +21,24 @@ Dokumen ini mencatat parity fitur berdasarkan pembacaan kode repository, bukan h
 
 ### Prioritas tinggi
 
-- [ ] **Statistik area seleksi.** Legacy `frontend/js/admin.js` memiliki `_calculateGeometryInArea(selectionPolygon)` yang mengirim geometri ke `POST /api/selection/stats` dan menampilkan hitungan titik, garis, serta polygon. Alur UI ini belum terlihat di frontend Next.js.
+- [ ] **Statistik area seleksi.** Legacy `frontend/js/admin.js` memiliki `_calculateGeometryInArea(selectionPolygon)` yang mengirim geometri ke `POST /api/selection/stats` dan menampilkan hitungan titik, garis, serta polygon. Endpoint backend sudah ada, tetapi alur UI ini belum terlihat di frontend Next.js.
 - [ ] **Edit/drag marker dan sinkronisasi endpoint pipa.** Legacy `frontend/js/map-admin-edit-shared.js` memiliki logika marker drag, pencarian pipa yang terhubung, pembaruan koordinat endpoint, dan penyimpanan perubahan terkait. Audit dan implementasikan parity ini sebelum mengandalkan drag marker di admin.
 - [ ] **Validasi saat menggambar atau menyimpan pipa.** Legacy menolak pipa baru jika endpoint tidak memenuhi aturan marker. Pastikan aturan yang sama diterapkan di frontend baru dan backend tetap menjadi sumber validasi final.
 - [ ] **Pengukuran dan helper geometri.** Audit helper perhitungan luas polygon, normalisasi diameter, snapping, serta validasi geometri legacy; pindahkan hanya perilaku yang masih digunakan.
+- [ ] **Audit parity kontrol admin.** Bandingkan kontrol dan helper yang hanya ada di `frontend/js/admin.js` serta `frontend/js/map-admin-edit-shared.js`. Jangan menghapus legacy sebelum gap yang masih diperlukan ditutup.
 
 ### Pencarian lokasi
 
 - [x] Input pencarian ringkas di toolbar; klik ikon membuka kolom input dan hasil muncul saat mengetik.
-- [ ] Konfigurasikan `NEXT_PUBLIC_GEOAPIFY_API_KEY` di environment deployment frontend.
-- [ ] Verifikasi hasil pencarian, klik hasil, dan penanda lokasi di browser.
+- [ ] Isi `NEXT_PUBLIC_GEOAPIFY_API_KEY` pada environment lokal/Vercel. `apps/frontend/.env.example` memuat placeholder, bukan kredensial aktif.
+- [ ] Verifikasi hasil pencarian, klik hasil, dan navigasi peta di browser.
 - [ ] Legacy menggunakan cache hasil pencarian dan menampilkan marker beserta popup lokasi. Implementasi baru saat ini belum memiliki cache hasil dan marker/popup hasil pencarian seperti legacy.
+
+### Konfigurasi deployment
+
+- [ ] Di Vercel, tambahkan `NEXT_PUBLIC_GEOAPIFY_API_KEY` dengan key Geoapify aktif untuk environment yang digunakan, lalu redeploy.
+- [ ] Pastikan `NEXT_PUBLIC_API_URL` menunjuk ke URL backend yang benar di Vercel; nilai lokal `http://localhost:4000` tidak cocok untuk production.
+- [x] Rentang Node frontend menggunakan `24.x` agar kompatibel dengan pemilihan runtime Vercel.
 
 ### Pengujian parity yang diperlukan
 
@@ -43,6 +50,7 @@ Dokumen ini mencatat parity fitur berdasarkan pembacaan kode repository, bukan h
 - [ ] Pastikan layer toggle, basemap, marker cluster, dan status peta bekerja setelah refresh.
 - [ ] Pastikan statistik area seleksi menampilkan hasil yang sama dengan legacy setelah dimigrasikan.
 - [ ] Pastikan drag marker tidak merusak geometri pipa yang endpoint-nya terhubung.
+- [ ] Pastikan pencarian lokasi berfungsi dengan key aktif dan hasil yang dipilih membawa peta ke lokasi benar.
 - [ ] Jalankan build frontend dan uji alur utama di browser setelah setiap kelompok perubahan.
 
 ## Catatan environment
@@ -51,6 +59,8 @@ Frontend Next.js membaca:
 
 - `NEXT_PUBLIC_API_URL`: URL base API backend.
 - `NEXT_PUBLIC_GEOAPIFY_API_KEY`: key Geoapify untuk pencarian lokasi.
+
+Template berada di `apps/frontend/.env.example`. Salin ke `.env.local` untuk pengembangan lokal. Untuk Vercel, atur variable pada Project Settings > Environment Variables lalu jalankan deployment ulang. Jangan menyalin key aktif ke file contoh atau commit file environment aktual.
 
 Variabel dengan awalan `NEXT_PUBLIC_` tersedia di browser. Jangan menaruh kredensial database, token Telegram, atau secret session di environment frontend.
 
