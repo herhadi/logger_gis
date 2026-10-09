@@ -240,15 +240,9 @@ export default function MapView({ adminMode = false }) {
                   100,
                   "#f97316",
                 ],
-                "circle-radius": [
-                  "step",
-                  ["get", "point_count"],
-                  16,
-                  20,
-                  21,
-                  100,
-                  27,
-                ],
+                // Ukuran cluster seragam seperti tampilan Leaflet lama.
+                // Jumlah marker dibedakan melalui warna, bukan ukuran lingkaran.
+                "circle-radius": 19,
                 // Menyamai marker cluster Leaflet lama: warna transparan
                 // sehingga pipa dan citra satelit tetap terlihat di bawahnya.
                 "circle-opacity": 0.68,
