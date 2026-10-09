@@ -32,8 +32,7 @@ export default function PipeLegend() {
         <h4>Diameter Pipa</h4>
         {diameters.map((diameter, index) => (
           <div className="legend-item" key={String(diameter)}>
-            <span className="legend-line" style={{ background: pipeColor(index) }} />
-            {formatDiameter(diameter)}
+            <button type="button" className="legend-filter" onClick={() => window.dispatchEvent(new CustomEvent("gis:filter-diameter", { detail: { diameter } }))} title="Klik untuk fokus diameter ini; klik lagi untuk reset"><span className="legend-line" style={{ background: pipeColor(index) }} />{formatDiameter(diameter)}</button>
           </div>
         ))}
       </div>
