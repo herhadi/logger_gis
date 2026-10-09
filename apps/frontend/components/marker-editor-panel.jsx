@@ -22,10 +22,25 @@ export default function MarkerEditorPanel() {
       try { const detail = await apiFetch(`/api/marker/${selected.properties.tipe}/${selected.properties.id}`); setForm(Object.fromEntries(Object.keys(initial).map(key => [key, clean(key === 'tipe' ? selected.properties.tipe : detail[key])] ))); }
       catch (error) { showToast(error.message || 'Gagal memuat detail marker', 'error'); setFeature(null); }
     };
-    window.addEventListener('gis:draw-created', onDraw); window.addEventListener('gis:marker-selected', onSelect);
+    const closeOnOtherSelection = () => setFeature(null);
+    const closeOnOtherDraw = event => {
+      if (event.detail?.geometry?.type && event.detail.geometry.type !== 'Point') setFeature(null);
+    };
+    window.addEventListener('gis:draw-created', onDraw);
+    window.addEventListener('gis:draw-created', closeOnOtherDraw);
+    window.addEventListener('gis:pipa-selected', closeOnOtherSelection);
+    window.addEventListener('gis:polygon-selected', closeOnOtherSelection);
+    window.addEventListener('gis:marker-selected', onSelect);
     const onGeometry = event => { if (event.detail?.geometry?.type === 'Point' && (!event.detail.properties?.__editorType || event.detail.properties.__editorType === 'marker')) setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
     window.addEventListener('gis:geometry-updated', onGeometry);
-    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:marker-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
+    return () => {
+      window.removeEventListener('gis:draw-created', onDraw);
+      window.removeEventListener('gis:draw-created', closeOnOtherDraw);
+      window.removeEventListener('gis:pipa-selected', closeOnOtherSelection);
+      window.removeEventListener('gis:polygon-selected', closeOnOtherSelection);
+      window.removeEventListener('gis:marker-selected', onSelect);
+      window.removeEventListener('gis:geometry-updated', onGeometry);
+    };
   }, [showToast]);
   useEffect(() => {
     if (!feature || !panelRef.current) return;
