@@ -14,10 +14,25 @@ export default function PolygonEditorPanel() {
   useEffect(() => {
     const onDraw = event => { if (event.detail?.geometry?.type === 'Polygon') { setFeature(event.detail); setPopupPosition(event.detail.properties?.__popupPosition || { left: 80, top: 64 }); setEditingId(null); setForm(initial); } };
     const onSelect = async event => { const selected = event.detail; setFeature(selected); setPopupPosition(selected.properties.__popupPosition || { left: 80, top: 64 }); setEditingId(String(selected.properties.id)); try { const detail = await apiFetch(`/api/polygon/${selected.properties.id}`); setForm(Object.fromEntries(Object.keys(initial).map(key => [key, clean(detail[key])] ))); } catch (error) { showToast(error.message || 'Gagal memuat detail polygon', 'error'); setFeature(null); } };
-    window.addEventListener('gis:draw-created', onDraw); window.addEventListener('gis:polygon-selected', onSelect);
+    const closeOnOtherSelection = () => setFeature(null);
+    const closeOnOtherDraw = event => {
+      if (event.detail?.geometry?.type && event.detail.geometry.type !== 'Polygon') setFeature(null);
+    };
+    window.addEventListener('gis:draw-created', onDraw);
+    window.addEventListener('gis:draw-created', closeOnOtherDraw);
+    window.addEventListener('gis:marker-selected', closeOnOtherSelection);
+    window.addEventListener('gis:pipa-selected', closeOnOtherSelection);
+    window.addEventListener('gis:polygon-selected', onSelect);
     const onGeometry = event => { if (event.detail?.geometry?.type === 'Polygon' && (!event.detail.properties?.__editorType || event.detail.properties.__editorType === 'polygon')) setFeature(current => current ? { ...current, geometry: event.detail.geometry } : current); };
     window.addEventListener('gis:geometry-updated', onGeometry);
-    return () => { window.removeEventListener('gis:draw-created', onDraw); window.removeEventListener('gis:polygon-selected', onSelect); window.removeEventListener('gis:geometry-updated', onGeometry); };
+    return () => {
+      window.removeEventListener('gis:draw-created', onDraw);
+      window.removeEventListener('gis:draw-created', closeOnOtherDraw);
+      window.removeEventListener('gis:marker-selected', closeOnOtherSelection);
+      window.removeEventListener('gis:pipa-selected', closeOnOtherSelection);
+      window.removeEventListener('gis:polygon-selected', onSelect);
+      window.removeEventListener('gis:geometry-updated', onGeometry);
+    };
   }, [showToast]);
   useEffect(() => {
     if (!feature || !panelRef.current) return;
