@@ -248,12 +248,28 @@ button {
 }
 
 .legend-toggle {
+  display: grid;
   width: 29px;
   height: 29px;
   padding: 0;
+  place-items: center;
+  border: 1px solid #cbd5e1;
   background: #fff;
   color: #334155;
-  font-size: 18px;
+  font-size: 16px;
+  line-height: 1;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.legend-toggle:hover {
+  background: #f1f5f9;
+}
+
+.legend-toggle.is-pinned {
+  border-color: #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 0 0 2px #2563eb33;
 }
 
 .legend-options {
@@ -263,12 +279,14 @@ button {
 }
 
 .pipe-legend:hover,
-.pipe-legend:focus-within {
+.pipe-legend:focus-within,
+.pipe-legend.is-pinned {
   width: max-content;
 }
 
 .pipe-legend:hover .legend-options,
-.pipe-legend:focus-within .legend-options {
+.pipe-legend:focus-within .legend-options,
+.pipe-legend.is-pinned .legend-options {
   display: grid;
 }
 
