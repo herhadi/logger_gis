@@ -43,6 +43,26 @@ export default function MapView({ adminMode = false }) {
   const expandedClusterRef = useRef(false);
   const { showToast } = useToast();
 
+  function popupPositionAt(point) {
+    const rect = mapRef.current?.getContainer().getBoundingClientRect();
+    if (!rect || !point) return { left: 80, top: 64 };
+    return { left: rect.left + point.x + 14, top: rect.top + point.y + 14 };
+  }
+
+  function popupPositionForFeature(feature) {
+    const geometry = feature?.geometry;
+    if (!geometry) return { left: 80, top: 64 };
+    let coordinate;
+    if (geometry.type === "Point") coordinate = geometry.coordinates;
+    else if (geometry.type === "LineString") coordinate = geometry.coordinates[Math.floor(geometry.coordinates.length / 2)];
+    else if (geometry.type === "Polygon") {
+      const ring = geometry.coordinates?.[0] || [];
+      coordinate = ring[Math.floor(ring.length / 2)];
+    }
+    if (!coordinate || !mapRef.current) return { left: 80, top: 64 };
+    return popupPositionAt(mapRef.current.project(coordinate));
+  }
+
   function toggleLayer(id) {
     const next = !visibility[id];
     setVisibility((current) => {
@@ -467,8 +487,15 @@ export default function MapView({ adminMode = false }) {
         map.addControl(draw, "top-left");
         map.on("draw.create", (event) => {
           console.info("[Next Draw] create", event.features);
+          const createdFeature = {
+            ...event.features[0],
+            properties: {
+              ...event.features[0].properties,
+              __popupPosition: popupPositionForFeature(event.features[0]),
+            },
+          };
           window.dispatchEvent(
-            new CustomEvent("gis:draw-created", { detail: event.features[0] }),
+            new CustomEvent("gis:draw-created", { detail: createdFeature }),
           );
           showToast("Geometri baru dibuat. Isi detail lalu simpan.", "info");
         });
@@ -563,6 +590,7 @@ export default function MapView({ adminMode = false }) {
             geometry: feature.geometry,
             properties: {
               ...feature.properties,
+              __popupPosition: popupPositionAt(event.point),
               __editorType: "pipa",
               __editorId: feature.properties.id,
             },
@@ -596,6 +624,7 @@ export default function MapView({ adminMode = false }) {
             geometry: feature.geometry,
             properties: {
               ...feature.properties,
+              __popupPosition: popupPositionAt(event.point),
               __editorType: "marker",
               __editorId: feature.properties.id,
             },
@@ -629,6 +658,7 @@ export default function MapView({ adminMode = false }) {
             geometry: feature.geometry,
             properties: {
               ...feature.properties,
+              __popupPosition: popupPositionAt(event.point),
               __editorType: "polygon",
               __editorId: feature.properties.id,
             },
