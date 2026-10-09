@@ -4,6 +4,14 @@ Catatan perubahan project GIS Watermeter. Gunakan format tanggal `YYYY-MM-DD` da
 
 ## [Unreleased]
 
+### Added
+
+- Menambahkan tool analisis area di frontend Next.js: menggambar area terpisah dari editor polygon, menghitung perkiraan luas hektare, dan menampilkan statistik point/line/polygon dari endpoint `/api/selection/stats`.
+
+### Documentation
+
+- Memperbarui audit migrasi frontend dan checklist pengujian statistik area; pengujian browser masih tertunda.
+
 ### Changed
 
 - Memperjelas template `apps/frontend/.env.example` untuk pencarian Geoapify, termasuk placeholder key dan catatan bahwa variabel `NEXT_PUBLIC_*` terlihat oleh browser.
