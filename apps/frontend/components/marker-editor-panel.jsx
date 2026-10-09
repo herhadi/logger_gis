@@ -79,6 +79,7 @@ export default function MarkerEditorPanel() {
     <label>Elevation<input name="elevation" value={form.elevation || ''} onChange={update} /></label>
     <label>Keterangan<textarea name="keterangan" value={form.keterangan || ''} onChange={update} /></label>
     <button className="editor-save" disabled={saving}>{saving ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Simpan Marker'}</button>
-    {editingId && <button type="button" className="editor-delete" onClick={remove}>Hapus Marker</button>}
+    {editingId && <button type="button" onClick={() => { const coords = feature.geometry.coordinates; window.open("https://www.google.com/maps/dir/?api=1&destination=" + coords[1] + "," + coords[0], "_blank", "noopener,noreferrer"); }}>Buka rute ke lokasi</button>}
+    {editingId && <button type="button" className="editor-delete" onClick={remove}>Hapus Marker</button>
   </form>;
 }
