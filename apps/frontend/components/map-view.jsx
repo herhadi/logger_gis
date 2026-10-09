@@ -705,6 +705,21 @@ export default function MapView({ adminMode = false }) {
           window.removeEventListener("gis:crud-saved", refreshAfterCrud),
         );
       }
+      let activeDiameterFilter = null;
+      const onDiameterFilter = event => {
+        const diameter = String(event.detail?.diameter ?? "");
+        if (!map.getLayer("pipa")) return;
+        activeDiameterFilter = activeDiameterFilter === diameter ? null : diameter;
+        if (activeDiameterFilter === null) {
+          map.setPaintProperty("pipa", "line-opacity", 1);
+          map.setPaintProperty("pipa", "line-width", 2);
+        } else {
+          map.setPaintProperty("pipa", "line-opacity", ["case", ["==", ["to-string", ["get", "diameter"]], activeDiameterFilter], 1, 0.12]);
+          map.setPaintProperty("pipa", "line-width", ["case", ["==", ["to-string", ["get", "diameter"]], activeDiameterFilter], 5, 1]);
+        }
+      };
+      window.addEventListener("gis:filter-diameter", onDiameterFilter);
+      map.once("remove", () => window.removeEventListener("gis:filter-diameter", onDiameterFilter));
       map.on("load", () => setStatus("MapLibre aktif"));
       map.on("load", () => {
         ["osm", "satellite", "googleHybrid", "googleSatellite"].forEach(
