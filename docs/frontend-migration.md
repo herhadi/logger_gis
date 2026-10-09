@@ -21,7 +21,7 @@ Dokumen ini mencatat parity fitur berdasarkan pembacaan kode repository, bukan h
 
 ### Prioritas tinggi
 
-- [ ] **Statistik area seleksi.** Legacy `frontend/js/admin.js` memiliki `_calculateGeometryInArea(selectionPolygon)` yang mengirim geometri ke `POST /api/selection/stats` dan menampilkan hitungan titik, garis, serta polygon. Endpoint backend sudah ada, tetapi alur UI ini belum terlihat di frontend Next.js.
+- [x] **Statistik area seleksi (implementasi awal).** Frontend Next.js menyediakan tool terpisah untuk menggambar area, menghitung luas dalam hektare, dan memanggil endpoint `POST /api/selection/stats`. Pengujian browser serta validasi hasil terhadap legacy masih diperlukan. Legacy `frontend/js/admin.js` memiliki `_calculateGeometryInArea(selectionPolygon)` yang mengirim geometri ke `POST /api/selection/stats` dan menampilkan hitungan titik, garis, serta polygon. Endpoint backend sudah ada, tetapi alur UI ini belum terlihat di frontend Next.js.
 - [ ] **Edit/drag marker dan sinkronisasi endpoint pipa.** Legacy `frontend/js/map-admin-edit-shared.js` memiliki logika marker drag, pencarian pipa yang terhubung, pembaruan koordinat endpoint, dan penyimpanan perubahan terkait. Audit dan implementasikan parity ini sebelum mengandalkan drag marker di admin.
 - [ ] **Validasi saat menggambar atau menyimpan pipa.** Legacy menolak pipa baru jika endpoint tidak memenuhi aturan marker. Pastikan aturan yang sama diterapkan di frontend baru dan backend tetap menjadi sumber validasi final.
 - [ ] **Pengukuran dan helper geometri.** Audit helper perhitungan luas polygon, normalisasi diameter, snapping, serta validasi geometri legacy; pindahkan hanya perilaku yang masih digunakan.
@@ -48,7 +48,7 @@ Dokumen ini mencatat parity fitur berdasarkan pembacaan kode repository, bukan h
 - [ ] Pastikan satu panel editor aktif pada satu waktu.
 - [ ] Pastikan klik legenda diameter memfilter pipa yang sesuai dan klik ulang menghapus filter.
 - [ ] Pastikan layer toggle, basemap, marker cluster, dan status peta bekerja setelah refresh.
-- [ ] Pastikan statistik area seleksi menampilkan hasil yang sama dengan legacy setelah dimigrasikan.
+- [ ] Pastikan tool analisis area dapat menggambar minimal 3 titik, mengulang/membatalkan, dan menampilkan luas serta statistik yang sama dengan legacy.
 - [ ] Pastikan drag marker tidak merusak geometri pipa yang endpoint-nya terhubung.
 - [ ] Pastikan pencarian lokasi berfungsi dengan key aktif dan hasil yang dipilih membawa peta ke lokasi benar.
 - [ ] Jalankan build frontend dan uji alur utama di browser setelah setiap kelompok perubahan.
