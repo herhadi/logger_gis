@@ -248,12 +248,28 @@ button {
 }
 
 .legend-toggle {
+  display: grid;
   width: 29px;
   height: 29px;
   padding: 0;
+  place-items: center;
+  border: 1px solid #cbd5e1;
   background: #fff;
   color: #334155;
-  font-size: 18px;
+  font-size: 16px;
+  line-height: 1;
+  transition: background-color 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+}
+
+.legend-toggle:hover {
+  background: #f1f5f9;
+}
+
+.legend-toggle.is-pinned {
+  border-color: #1d4ed8;
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 0 0 2px #2563eb33;
 }
 
 .legend-options {
@@ -263,12 +279,14 @@ button {
 }
 
 .pipe-legend:hover,
-.pipe-legend:focus-within {
+.pipe-legend:focus-within,
+.pipe-legend.is-pinned {
   width: max-content;
 }
 
 .pipe-legend:hover .legend-options,
-.pipe-legend:focus-within .legend-options {
+.pipe-legend:focus-within .legend-options,
+.pipe-legend.is-pinned .legend-options {
   display: grid;
 }
 
@@ -413,22 +431,49 @@ button {
 .maplibregl-ctrl-top-left {
   top: 50px !important;
   left: 4px !important;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
 }
 
 .maplibregl-ctrl-top-left .maplibregl-ctrl {
-  margin-top: 0;
+  margin: 0 !important;
+}
+
+/* MapLibre navigation and Mapbox Draw controls use different class names. */
+.maplibregl-ctrl-top-left .maplibregl-ctrl-group,
+.maplibregl-ctrl-top-left .mapboxgl-ctrl-group {
+  width: 30px;
+  margin: 0 !important;
+  border-radius: 6px;
+  box-sizing: border-box;
+}
+
+.maplibregl-ctrl-top-left .maplibregl-ctrl-group button,
+.maplibregl-ctrl-top-left .mapboxgl-ctrl-group button,
+.maplibregl-ctrl-top-left .mapboxgl-ctrl-group .mapbox-gl-draw_ctrl-draw-btn {
+  width: 30px !important;
+  height: 30px !important;
+  box-sizing: border-box;
+}
+
+/* Ensure each toolbar stays below the page header. */
+.maplibregl-ctrl-top-left {
+  z-index: 5;
 }
 
 /* CRUD editor panel */
 .editor-panel {
   position: fixed;
-  z-index: 6;
-  top: 12px;
-  right: 190px;
+  z-index: 9;
+  top: 60px;
+  left: 80px;
+  right: auto;
   display: grid;
   gap: 8px;
   width: min(300px, calc(100vw - 24px));
-  max-height: calc(100vh - 24px);
+  max-height: calc(100vh - 72px);
   overflow: auto;
   padding: 14px;
   border-radius: 8px;
@@ -530,3 +575,5 @@ button {
     transform: rotate(360deg);
   }
 }
+
+.geo-search{position:absolute;z-index:7;top:122px;left:48px;width:38px;min-height:38px;padding:4px;border:1px solid #d1d5db;border-radius:6px;background:rgba(255,255,255,.97);box-shadow:0 1px 4px #0003;font-size:13px}.geo-search-toggle{display:grid;width:28px;height:28px;padding:0;place-items:center;border:0;border-radius:4px;background:#fff;color:#334155;font-size:25px;line-height:1}.geo-search-toggle:hover{background:#eff6ff}.geo-search.is-open{width:min(320px,calc(100vw - 100px));padding:5px}.geo-search-content{position:relative;display:grid;gap:5px;padding-top:5px}.geo-search-content input{width:100%;min-width:0;padding:8px;border:1px solid #cbd5e1;border-radius:5px;font:inherit}.geo-search-loading{position:absolute;top:13px;right:10px;color:#64748b}.geo-results{display:grid;max-height:250px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:5px;background:#fff}.geo-results button{text-align:left;padding:9px;border:0;border-bottom:1px solid #e2e8f0;border-radius:0;background:white;color:#1e293b;line-height:1.35}.geo-results button:last-child{border-bottom:0}.geo-results button:hover{background:#eff6ff}.legend-filter{display:flex;align-items:center;gap:8px;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}.legend-item:has(.legend-filter){padding:2px 4px;border-radius:4px}.legend-item:has(.legend-filter):hover{background:#e2e8f0}

@@ -32,6 +32,10 @@ export default function MapView({ adminMode = false }) {
     return localStorage.getItem("gis-basemap") || "satellite";
   });
   const [activeDrawMode, setActiveDrawMode] = useState(null);
+  const [geoQuery, setGeoQuery] = useState("");
+  const [geoResults, setGeoResults] = useState([]);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoSearchOpen, setGeoSearchOpen] = useState(false);
   const googleTiles = (layer) =>
     ["mt0", "mt1", "mt2", "mt3"].map(
       (server) =>
@@ -42,6 +46,61 @@ export default function MapView({ adminMode = false }) {
   const snappingRef = useRef(false);
   const expandedClusterRef = useRef(false);
   const { showToast } = useToast();
+
+  function popupPositionAt(point) {
+    const rect = mapRef.current?.getContainer().getBoundingClientRect();
+    if (!rect || !point) return { left: 80, top: 64 };
+    return { left: rect.left + point.x + 14, top: rect.top + point.y + 14 };
+  }
+
+  function popupPositionForFeature(feature) {
+    const geometry = feature?.geometry;
+    if (!geometry) return { left: 80, top: 64 };
+    let coordinate;
+    if (geometry.type === "Point") coordinate = geometry.coordinates;
+    else if (geometry.type === "LineString") coordinate = geometry.coordinates[Math.floor(geometry.coordinates.length / 2)];
+    else if (geometry.type === "Polygon") {
+      const ring = geometry.coordinates?.[0] || [];
+      coordinate = ring[Math.floor(ring.length / 2)];
+    }
+    if (!coordinate || !mapRef.current) return { left: 80, top: 64 };
+    return popupPositionAt(mapRef.current.project(coordinate));
+  }
+
+  async function searchLocation(event, quiet = false) {
+    event?.preventDefault?.();
+    const query = geoQuery.trim();
+    if (!query) { setGeoResults([]); return; }
+    const key = process.env.NEXT_PUBLIC_GEOAPIFY_API_KEY;
+    if (!key) { if (!quiet) showToast("Atur NEXT_PUBLIC_GEOAPIFY_API_KEY untuk pencarian lokasi.", "error"); return; }
+    setGeoLoading(true);
+    try {
+      const formatted = query.length <= 10 && !/[ ,0-9]/.test(query) ? query + " Batang" : query;
+      const url = new URL("https://api.geoapify.com/v1/geocode/search");
+      url.search = new URLSearchParams({ text: formatted, limit: "10", filter: "countrycode:id", bias: "proximity:109.7280,-6.8974", apiKey: key }).toString();
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Pencarian lokasi gagal");
+      const data = await response.json();
+      const priority = { village: 5, suburb: 4, city_district: 4, town: 3, city: 2, state: 1 };
+      const results = (data.features || []).map(feature => ({ name: feature.properties.formatted || feature.properties.name, center: feature.geometry.coordinates, bbox: feature.bbox, properties: feature.properties })).sort((a,b) => (priority[b.properties.result_type] || 0) - (priority[a.properties.result_type] || 0) || (b.properties.rank?.confidence || 0) - (a.properties.rank?.confidence || 0));
+      setGeoResults(results);
+      if (!results.length && !quiet) showToast("Lokasi tidak ditemukan.", "info");
+    } catch (error) { if (!quiet) showToast(error.message || "Gagal mencari lokasi", "error"); setGeoResults([]); }
+    finally { setGeoLoading(false); }
+  }
+  useEffect(() => {
+    if (!geoSearchOpen || !geoQuery.trim()) { setGeoResults([]); return; }
+    const timer = setTimeout(() => searchLocation(null, true), 350);
+    return () => clearTimeout(timer);
+  }, [geoQuery, geoSearchOpen]);
+
+  function chooseGeoResult(result) {
+    const map = mapRef.current;
+    if (!map) return;
+    if (result.bbox && result.bbox.length === 4) map.fitBounds([[result.bbox[0], result.bbox[1]], [result.bbox[2], result.bbox[3]]], { padding: { top: 70, bottom: 40, left: 40, right: 40 } });
+    else map.flyTo({ center: result.center, zoom: 15 });
+    setGeoResults([]); setGeoQuery(result.name || geoQuery);
+  }
 
   function toggleLayer(id) {
     const next = !visibility[id];
@@ -467,8 +526,15 @@ export default function MapView({ adminMode = false }) {
         map.addControl(draw, "top-left");
         map.on("draw.create", (event) => {
           console.info("[Next Draw] create", event.features);
+          const createdFeature = {
+            ...event.features[0],
+            properties: {
+              ...event.features[0].properties,
+              __popupPosition: popupPositionForFeature(event.features[0]),
+            },
+          };
           window.dispatchEvent(
-            new CustomEvent("gis:draw-created", { detail: event.features[0] }),
+            new CustomEvent("gis:draw-created", { detail: createdFeature }),
           );
           showToast("Geometri baru dibuat. Isi detail lalu simpan.", "info");
         });
@@ -563,6 +629,7 @@ export default function MapView({ adminMode = false }) {
             geometry: feature.geometry,
             properties: {
               ...feature.properties,
+              __popupPosition: popupPositionAt(event.point),
               __editorType: "pipa",
               __editorId: feature.properties.id,
             },
@@ -596,6 +663,7 @@ export default function MapView({ adminMode = false }) {
             geometry: feature.geometry,
             properties: {
               ...feature.properties,
+              __popupPosition: popupPositionAt(event.point),
               __editorType: "marker",
               __editorId: feature.properties.id,
             },
@@ -629,6 +697,7 @@ export default function MapView({ adminMode = false }) {
             geometry: feature.geometry,
             properties: {
               ...feature.properties,
+              __popupPosition: popupPositionAt(event.point),
               __editorType: "polygon",
               __editorId: feature.properties.id,
             },
@@ -675,6 +744,21 @@ export default function MapView({ adminMode = false }) {
           window.removeEventListener("gis:crud-saved", refreshAfterCrud),
         );
       }
+      let activeDiameterFilter = null;
+      const onDiameterFilter = event => {
+        const diameter = String(event.detail?.diameter ?? "");
+        if (!map.getLayer("pipa")) return;
+        activeDiameterFilter = activeDiameterFilter === diameter ? null : diameter;
+        if (activeDiameterFilter === null) {
+          map.setPaintProperty("pipa", "line-opacity", 1);
+          map.setPaintProperty("pipa", "line-width", 2);
+        } else {
+          map.setPaintProperty("pipa", "line-opacity", ["case", ["==", ["to-string", ["get", "diameter"]], activeDiameterFilter], 1, 0.12]);
+          map.setPaintProperty("pipa", "line-width", ["case", ["==", ["to-string", ["get", "diameter"]], activeDiameterFilter], 5, 1]);
+        }
+      };
+      window.addEventListener("gis:filter-diameter", onDiameterFilter);
+      map.once("remove", () => window.removeEventListener("gis:filter-diameter", onDiameterFilter));
       map.on("load", () => setStatus("MapLibre aktif"));
       map.on("load", () => {
         ["osm", "satellite", "googleHybrid", "googleSatellite"].forEach(
@@ -867,6 +951,10 @@ export default function MapView({ adminMode = false }) {
   return (
     <section className="map-shell">
       <div ref={containerRef} className="map" />
+      <div className={"geo-search " + (geoSearchOpen ? "is-open" : "")}>
+        <button className="geo-search-toggle" type="button" aria-label={geoSearchOpen ? "Tutup pencarian lokasi" : "Cari lokasi"} title="Cari lokasi" onClick={() => { setGeoSearchOpen(open => !open); if (geoSearchOpen) { setGeoQuery(""); setGeoResults([]); } }}>⌕</button>
+        {geoSearchOpen && <div className="geo-search-content"><input autoFocus aria-label="Cari desa atau kecamatan" placeholder="Cari desa/kecamatan..." value={geoQuery} onChange={event => setGeoQuery(event.target.value)} />{geoLoading && <span className="geo-search-loading">…</span>}{geoResults.length > 0 && <div className="geo-results">{geoResults.map((result,index) => <button type="button" key={result.name + "-" + index} onClick={() => chooseGeoResult(result)}>{result.name}</button>)}</div>}</div>}
+      </div>
       <div className="map-status">{status}</div>
       {adminMode && (
         <>

@@ -1,68 +1,75 @@
 # Arsitektur Project
 
-## Kondisi saat ini
+## Arsitektur saat ini
+
+Repository sedang berada dalam fase migrasi dari frontend HTML/Leaflet dan backend Express legacy ke frontend Next.js/MapLibre dan backend API NestJS. Keduanya tetap berada di repository yang sama tetapi memiliki konfigurasi dan deployment terpisah.
 
 ```text
-Frontend HTML
-  ├── user.js
-  ├── admin.js
-  ├── map-core-shared.js
-  ├── map-read-shared.js
-  └── map-admin-edit-shared.js
-          │
-          ▼
-backend/server.prod.js
+Browser
+  │
+  ▼
+apps/frontend — Next.js + React + MapLibre
+  ├── app/                 halaman login, user, admin
+  ├── components/map-view.jsx
+  ├── components/*-editor-panel.jsx
+  ├── components/pipe-legend.jsx
+  └── lib/api.js
+  │
+  │ NEXT_PUBLIC_API_URL
+  ▼
+apps/backend — NestJS API
   ├── auth/session
-  ├── API pipa
-  ├── API polygon
   ├── API marker
-  ├── selection stats
-  ├── Telegram webhook
-  ├── monitoring/cron
-  └── static files
-          │
-          ▼
-     PostgreSQL/PostGIS
+  ├── API pipa + option
+  ├── API polygon + selection stats
+  ├── vector tiles
+  └── Telegram / monitoring / cron
+  │
+  ▼
+PostgreSQL / PostGIS
+
+Legacy/reference:
+  frontend/                 HTML + Leaflet
+  backend/                  Express legacy/reference
 ```
 
-## Target bertahap
+## Deployment dan environment
 
-```text
-Frontend
-  ├── role orchestration
-  ├── shared map core/read
-  ├── admin edit capability
-  └── API client
-          │
-          ▼
-Express app
-  ├── middleware
-  ├── routes/auth
-  ├── routes/pipa
-  ├── routes/polygon
-  ├── routes/marker
-  └── routes/telegram
-          │
-          ▼
-Services + validation + db
-          │
-          ▼
-PostgreSQL/PostGIS
-```
+- Frontend dideploy terpisah, misalnya melalui Vercel.
+- Backend API dideploy terpisah, misalnya melalui Render.
+- `apps/frontend/.env.example` adalah template environment frontend.
+- `apps/backend/.env.example` adalah template environment backend.
+- `.env.example` di root dipertahankan sebagai template legacy/root; jangan menganggapnya sebagai template frontend Next.js.
+- `.env.test.example` hanya untuk test dan harus memakai database non-production.
+- `NEXT_PUBLIC_API_URL` menunjuk ke base URL backend.
+- `NEXT_PUBLIC_GEOAPIFY_API_KEY` dipakai oleh pencarian lokasi di browser. Karena awalan `NEXT_PUBLIC_`, key dapat terlihat oleh pengguna; batasi pemakaiannya di dashboard Geoapify.
 
-## Batas tanggung jawab frontend
+Jangan commit file environment aktual, token, password, session secret, atau kredensial database.
 
-- `map-core-shared.js`: setup map, base layer, renderer, dan fondasi umum.
-- `map-read-shared.js`: loading data, popup detail, legend, dan optimasi read.
-- `map-admin-edit-shared.js`: CRUD serta interaksi edit admin.
-- `admin.js`: orchestration dan logic khusus admin.
-- `user.js`: bootstrap dan logic khusus viewer.
+## Tanggung jawab frontend Next.js
 
-Perubahan yang berlaku untuk admin dan user tidak boleh digandakan di `admin.js` dan `user.js`.
+- `apps/frontend/app/`: routing halaman Next.js.
+- `apps/frontend/components/map-view.jsx`: inisialisasi MapLibre, layer raster/vector, kontrol peta, pencarian lokasi, pemilihan diameter pipa, dan event peta.
+- `apps/frontend/components/marker-editor-panel.jsx`: create/update/delete marker dan tautan navigasi ke Google Maps.
+- `apps/frontend/components/pipe-editor-panel.jsx`: create/update/delete pipa.
+- `apps/frontend/components/polygon-editor-panel.jsx`: create/update/delete polygon.
+- `apps/frontend/components/pipe-legend.jsx`: legenda dan pemicu filter diameter.
+- `apps/frontend/lib/api.js`: request ke backend.
+- `apps/frontend/app/globals.css`: layout peta, toolbar, editor, dan kontrol responsif.
 
-## Aturan reuse fungsi
+## Frontend legacy
 
-- Fungsi format, validasi, request API, dan transformasi data yang dipakai lebih dari satu modul ditempatkan di utility/shared module.
-- Browser global digunakan melalui satu namespace bersama bila kompatibilitas script klasik masih diperlukan.
-- Module tidak boleh membuat salinan logic hanya karena dipakai oleh role berbeda.
-- Setiap fungsi shared harus memiliki nama, tanggung jawab, dan dependensi yang jelas agar tidak berubah menjadi tempat penampungan logic acak.
+- `frontend/js/map-core-shared.js`: fondasi map Leaflet dan layer.
+- `frontend/js/map-read-shared.js`: loading data, popup, legenda, dan geocoder Geoapify.
+- `frontend/js/map-admin-edit-shared.js`: CRUD, edit geometri, dan sinkronisasi pipa yang terhubung ke marker.
+- `frontend/js/admin.js`: orchestration admin, statistik area seleksi, kontrol layer, dan helper geometri.
+- `frontend/js/user.js`: bootstrap viewer read-only.
+
+Folder legacy tetap berguna sebagai referensi perilaku sampai parity fitur Next.js diverifikasi. Jangan menghapus implementasi legacy hanya karena ada komponen pengganti dengan nama serupa.
+
+## Aturan reuse
+
+- Logic yang dipakai admin dan user sebaiknya tidak diduplikasi.
+- Jaga kontrak API, koordinat, dan urutan koordinat secara konsisten.
+- Validasi perubahan geometri, relasi endpoint pipa-marker, dan perilaku popup sebelum menyatakan parity selesai.
+- Update dokumen migrasi dan changelog ketika ada fitur yang dipindahkan atau gap yang ditutup.
