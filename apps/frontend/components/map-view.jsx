@@ -74,6 +74,10 @@ export default function MapView({ adminMode = false }) {
       setAreaAnalysisMode(false);
       map.doubleClickZoom.enable();
       map.getCanvas().style.cursor = "";
+      areaPointsRef.current = [];
+      setAreaPoints([]);
+      setAreaStats(null);
+      updateAreaPreview([]);
       showToast("Analisis area dibatalkan.", "info");
       return;
     }
@@ -848,6 +852,7 @@ export default function MapView({ adminMode = false }) {
         map.addLayer({ id: "area-analysis-fill", type: "fill", source: "area-analysis", filter: ["==", ["geometry-type"], "Polygon"], paint: { "fill-color": "#0ea5e9", "fill-opacity": 0.18 } });
         map.addLayer({ id: "area-analysis-outline", type: "line", source: "area-analysis", filter: ["==", ["geometry-type"], "LineString"], paint: { "line-color": "#0284c7", "line-width": 3, "line-dasharray": [2, 1] } });
         map.addLayer({ id: "area-analysis-points", type: "circle", source: "area-analysis", filter: ["==", ["geometry-type"], "Point"], paint: { "circle-radius": 5, "circle-color": "#0284c7", "circle-stroke-color": "#fff", "circle-stroke-width": 2 } });
+        updateAreaPreview(areaPointsRef.current);
       });
       map.on("click", (event) => {
         if (!areaAnalysisModeRef.current) return;
