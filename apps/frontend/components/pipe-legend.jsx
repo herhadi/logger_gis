@@ -26,7 +26,7 @@ export default function PipeLegend() {
         title={pinned ? 'Legend terkunci — klik untuk melepas' : 'Kunci agar legend tetap tampil'}
         onClick={() => setPinned(current => !current)}
       >
-        {pinned ? '🔒' : '🔓'}
+        ☷
       </button>
       <div className="legend-options">
         <h4>Diameter Pipa</h4>
