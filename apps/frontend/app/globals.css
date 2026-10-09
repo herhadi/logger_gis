@@ -577,3 +577,42 @@ button {
 }
 
 .geo-search{position:absolute;z-index:7;top:122px;left:48px;width:38px;min-height:38px;padding:4px;border:1px solid #d1d5db;border-radius:6px;background:rgba(255,255,255,.97);box-shadow:0 1px 4px #0003;font-size:13px}.geo-search-toggle{display:grid;width:28px;height:28px;padding:0;place-items:center;border:0;border-radius:4px;background:#fff;color:#334155;font-size:25px;line-height:1}.geo-search-toggle:hover{background:#eff6ff}.geo-search.is-open{width:min(320px,calc(100vw - 100px));padding:5px}.geo-search-content{position:relative;display:grid;gap:5px;padding-top:5px}.geo-search-content input{width:100%;min-width:0;padding:8px;border:1px solid #cbd5e1;border-radius:5px;font:inherit}.geo-search-loading{position:absolute;top:13px;right:10px;color:#64748b}.geo-results{display:grid;max-height:250px;overflow-y:auto;border:1px solid #e2e8f0;border-radius:5px;background:#fff}.geo-results button{text-align:left;padding:9px;border:0;border-bottom:1px solid #e2e8f0;border-radius:0;background:white;color:#1e293b;line-height:1.35}.geo-results button:last-child{border-bottom:0}.geo-results button:hover{background:#eff6ff}.legend-filter{display:flex;align-items:center;gap:8px;width:100%;padding:0;border:0;background:transparent;color:inherit;text-align:left;cursor:pointer}.legend-item:has(.legend-filter){padding:2px 4px;border-radius:4px}.legend-item:has(.legend-filter):hover{background:#e2e8f0}
+
+
+/* Area selection and statistics controls */
+.area-analysis-actions,
+.area-analysis-results {
+  position: fixed;
+  z-index: 8;
+  left: 58px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  max-width: min(430px, calc(100vw - 76px));
+  padding: 10px 12px;
+  border: 1px solid #bae6fd;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.97);
+  color: #0f172a;
+  box-shadow: 0 2px 8px #0003;
+  font-size: 13px;
+}
+.area-analysis-actions { top: 102px; }
+.area-analysis-results {
+  top: 155px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(90px, 1fr));
+}
+.area-analysis-actions button,
+.area-analysis-results button {
+  padding: 5px 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  color: #0f172a;
+  cursor: pointer;
+}
+.area-analysis-actions button:disabled { cursor: not-allowed; opacity: .5; }
+.area-analysis-results strong,
+.area-analysis-results button { grid-column: 1 / -1; }
